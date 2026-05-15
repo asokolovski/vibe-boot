@@ -1,6 +1,8 @@
 package com.alexeisoki.vibeboot.deployment;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -28,7 +30,7 @@ public class DeploymentService {
         //create new deployment and save it to the database
         Deployment deployment = new Deployment(request.projectId());
         Deployment savedDeployment = deploymentRepository.save(deployment);
-        
+
         return toResponse(savedDeployment);
     }
 
@@ -37,6 +39,16 @@ public class DeploymentService {
                 .orElseThrow(() -> new IllegalArgumentException("Deployment not found"));
 
         return toResponse(deployment);
+    }
+
+    public List<DeploymentResponse> getDeploymentsForProject(UUID projectId) {
+        projectService.getProjectOrThrow(projectId);
+        List<Deployment> deployments = deploymentRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
+        List<DeploymentResponse> responses = new ArrayList<>();
+        for (Deployment deployment : deployments) {
+            responses.add(toResponse(deployment));
+        }
+        return responses;
     }
 
 

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -109,6 +110,50 @@ class DeploymentServiceTest {
                 .hasMessage("Deployment not found");
 
         verify(deploymentRepository).findById(deploymentId);
+    }
+
+    @Test
+    void getDeploymentsForProject_verifiesProjectAndReturnsDeploymentResponses() {
+        // Arrange
+        DeploymentService deploymentService = new DeploymentService(deploymentRepository, projectService);
+        UUID projectId = UUID.randomUUID();
+        UUID firstDeploymentId = UUID.randomUUID();
+        UUID secondDeploymentId = UUID.randomUUID();
+        Instant firstCreatedAt = Instant.parse("2026-05-15T13:00:00Z");
+        Instant secondCreatedAt = Instant.parse("2026-05-15T12:00:00Z");
+        Project project = new Project(
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main",
+                "./gradlew bootRun"
+        );
+        Deployment firstDeployment = deploymentWithGeneratedFields(firstDeploymentId, projectId, firstCreatedAt);
+        Deployment secondDeployment = deploymentWithGeneratedFields(secondDeploymentId, projectId, secondCreatedAt);
+
+        when(projectService.getProjectOrThrow(projectId)).thenReturn(project);
+        when(deploymentRepository.findByProjectIdOrderByCreatedAtDesc(projectId))
+                .thenReturn(List.of(firstDeployment, secondDeployment));
+
+        // Act
+        List<DeploymentResponse> responses = deploymentService.getDeploymentsForProject(projectId);
+
+        // Assert
+        assertThat(responses).hasSize(2);
+        assertThat(responses.get(0).id()).isEqualTo(firstDeploymentId);
+        assertThat(responses.get(0).projectId()).isEqualTo(projectId);
+        assertThat(responses.get(0).status()).isEqualTo(DeploymentStatus.QUEUED);
+        assertThat(responses.get(0).createdAt()).isEqualTo(firstCreatedAt);
+        assertThat(responses.get(0).startedAt()).isNull();
+        assertThat(responses.get(0).finishedAt()).isNull();
+        assertThat(responses.get(1).id()).isEqualTo(secondDeploymentId);
+        assertThat(responses.get(1).projectId()).isEqualTo(projectId);
+        assertThat(responses.get(1).status()).isEqualTo(DeploymentStatus.QUEUED);
+        assertThat(responses.get(1).createdAt()).isEqualTo(secondCreatedAt);
+        assertThat(responses.get(1).startedAt()).isNull();
+        assertThat(responses.get(1).finishedAt()).isNull();
+
+        verify(projectService).getProjectOrThrow(projectId);
+        verify(deploymentRepository).findByProjectIdOrderByCreatedAtDesc(projectId);
     }
 
     private static Deployment deploymentWithGeneratedFields(UUID id, UUID projectId, Instant createdAt) {

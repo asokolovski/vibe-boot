@@ -20,6 +20,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.alexeisoki.vibeboot.deployment.DeploymentService;
+import com.alexeisoki.vibeboot.deployment.DeploymentStatus;
+import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
 
@@ -31,6 +34,9 @@ class ProjectControllerTest {
 
     @MockitoBean
     private ProjectService projectService;
+
+    @MockitoBean
+    private DeploymentService deploymentService;
 
     @Test
     void createProject_returnsCreatedAndResponseJson() throws Exception {
@@ -99,5 +105,36 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].createdAt").value("2026-05-14T12:00:00Z"));
 
         verify(projectService, times(1)).getAllProjects();
+    }
+
+    @Test
+    void getDeploymentsForProject_returnsOkAndDeploymentListJson() throws Exception {
+        // Arrange
+        UUID projectId = UUID.randomUUID();
+        UUID deploymentId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
+        DeploymentResponse response = new DeploymentResponse(
+                deploymentId,
+                projectId,
+                DeploymentStatus.QUEUED,
+                createdAt,
+                null,
+                null
+        );
+
+        when(deploymentService.getDeploymentsForProject(projectId)).thenReturn(List.of(response));
+
+        // Act + Assert
+        mockMvc.perform(get("/api/projects/{projectId}/deployments", projectId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(deploymentId.toString()))
+                .andExpect(jsonPath("$[0].projectId").value(projectId.toString()))
+                .andExpect(jsonPath("$[0].status").value("QUEUED"))
+                .andExpect(jsonPath("$[0].createdAt").value("2026-05-15T12:00:00Z"))
+                .andExpect(jsonPath("$[0].startedAt").doesNotExist())
+                .andExpect(jsonPath("$[0].finishedAt").doesNotExist());
+
+        verify(deploymentService, times(1)).getDeploymentsForProject(projectId);
     }
 }
