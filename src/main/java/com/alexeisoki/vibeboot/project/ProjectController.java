@@ -17,6 +17,8 @@ import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/projects")
 public class ProjectController {
@@ -30,7 +32,7 @@ public class ProjectController {
     }
 
     @PostMapping
-    public ResponseEntity<ProjectResponse> createProject(@RequestBody CreateProjectRequest request) {
+    public ResponseEntity<ProjectResponse> createProject(@Valid @RequestBody CreateProjectRequest request) {
         ProjectResponse response = projectService.createProject(request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);

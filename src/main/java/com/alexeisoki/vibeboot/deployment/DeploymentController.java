@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/deployments")
 public class DeploymentController {
@@ -24,7 +26,7 @@ public class DeploymentController {
     }
 
     @PostMapping
-    public ResponseEntity<DeploymentResponse> triggerDeployment(@RequestBody TriggerDeploymentRequest request) {
+    public ResponseEntity<DeploymentResponse> triggerDeployment(@Valid @RequestBody TriggerDeploymentRequest request) {
         DeploymentResponse response = deploymentService.triggerDeployment(request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);

@@ -3,6 +3,7 @@ package com.alexeisoki.vibeboot.deployment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,6 +15,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -22,6 +24,7 @@ import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 import com.alexeisoki.vibeboot.project.Project;
 import com.alexeisoki.vibeboot.project.ProjectService;
+import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @ExtendWith(MockitoExtension.class)
 class DeploymentServiceTest {
@@ -32,10 +35,17 @@ class DeploymentServiceTest {
     @Mock
     private ProjectService projectService;
 
+    @Mock
+    private DeploymentWorker deploymentWorker;
+
     @Test
     void triggerDeployment_verifiesProjectSavesDeploymentAndReturnsResponse() {
         // Arrange
-        DeploymentService deploymentService = new DeploymentService(deploymentRepository, projectService);
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentWorker
+        );
         UUID projectId = UUID.randomUUID();
         UUID deploymentId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
@@ -69,12 +79,20 @@ class DeploymentServiceTest {
         Deployment deploymentToSave = deploymentCaptor.getValue();
         assertThat(deploymentToSave.getProjectId()).isEqualTo(projectId);
         assertThat(deploymentToSave.getStatus()).isEqualTo(DeploymentStatus.QUEUED);
+
+        InOrder inOrder = inOrder(deploymentRepository, deploymentWorker);
+        inOrder.verify(deploymentRepository).save(any(Deployment.class));
+        inOrder.verify(deploymentWorker).runDeployment(deploymentId);
     }
 
     @Test
     void getDeploymentOrThrow_returnsDeploymentResponseWhenFound() {
         // Arrange
-        DeploymentService deploymentService = new DeploymentService(deploymentRepository, projectService);
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentWorker
+        );
         UUID deploymentId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
@@ -99,14 +117,18 @@ class DeploymentServiceTest {
     @Test
     void getDeploymentOrThrow_throwsWhenDeploymentIsMissing() {
         // Arrange
-        DeploymentService deploymentService = new DeploymentService(deploymentRepository, projectService);
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentWorker
+        );
         UUID deploymentId = UUID.randomUUID();
 
         when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.empty());
 
         // Act + Assert
         assertThatThrownBy(() -> deploymentService.getDeploymentOrThrow(deploymentId))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Deployment not found");
 
         verify(deploymentRepository).findById(deploymentId);
@@ -115,7 +137,11 @@ class DeploymentServiceTest {
     @Test
     void getDeploymentsForProject_verifiesProjectAndReturnsDeploymentResponses() {
         // Arrange
-        DeploymentService deploymentService = new DeploymentService(deploymentRepository, projectService);
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentWorker
+        );
         UUID projectId = UUID.randomUUID();
         UUID firstDeploymentId = UUID.randomUUID();
         UUID secondDeploymentId = UUID.randomUUID();

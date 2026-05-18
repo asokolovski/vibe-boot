@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 import com.alexeisoki.vibeboot.project.ProjectService;
+import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 
 
@@ -17,10 +18,16 @@ import com.alexeisoki.vibeboot.project.ProjectService;
 public class DeploymentService {
     private final DeploymentRepository deploymentRepository;
     private final ProjectService projectService;
+    private final DeploymentWorker deploymentWorker;
 
-    public DeploymentService(DeploymentRepository deploymentRepository, ProjectService projectService) {
+    public DeploymentService(
+            DeploymentRepository deploymentRepository,
+            ProjectService projectService,
+            DeploymentWorker deploymentWorker
+    ) {
         this.deploymentRepository = deploymentRepository;
         this.projectService = projectService;
+        this.deploymentWorker = deploymentWorker;
     }
 
     public DeploymentResponse triggerDeployment(TriggerDeploymentRequest request) {
@@ -30,13 +37,14 @@ public class DeploymentService {
         //create new deployment and save it to the database
         Deployment deployment = new Deployment(request.projectId());
         Deployment savedDeployment = deploymentRepository.save(deployment);
+        deploymentWorker.runDeployment(savedDeployment.getId());
 
         return toResponse(savedDeployment);
     }
 
     public DeploymentResponse getDeploymentOrThrow(UUID deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
-                .orElseThrow(() -> new IllegalArgumentException("Deployment not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment not found"));
 
         return toResponse(deployment);
     }

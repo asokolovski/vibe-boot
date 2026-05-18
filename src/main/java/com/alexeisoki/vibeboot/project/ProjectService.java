@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
+import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @Service
 public class ProjectService {
@@ -46,7 +47,7 @@ public class ProjectService {
     // Will come in handy later down the line when we want to create a deployment for a specific project, since we'll need to look up the project by ID first.
     public Project getProjectOrThrow(UUID id) {
         return projectRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
     }
 
     // This is a helper method to convert a Project entity to a ProjectResponse DTO for the API.

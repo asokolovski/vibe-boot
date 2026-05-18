@@ -52,6 +52,19 @@ public class Deployment {
         this.status = DeploymentStatus.QUEUED;
     }
 
+    public void markRunning() {
+        status = DeploymentStatus.RUNNING;
+        startedAt = Instant.now();
+    }
+
+    public void markFinished(DeploymentStatus finishedStatus) {
+        if (finishedStatus != DeploymentStatus.SUCCESS && finishedStatus != DeploymentStatus.FAILED) {
+            throw new IllegalArgumentException("Finished status must be SUCCESS or FAILED");
+        }
+
+        status = finishedStatus;
+        finishedAt = Instant.now();
+    }
 
     // @PrePersist runs right before JPA inserts this entity into the database.
     @PrePersist

@@ -19,6 +19,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
+import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @ExtendWith(MockitoExtension.class)
 class ProjectServiceTest {
@@ -143,7 +144,7 @@ class ProjectServiceTest {
 
         // Act + Assert
         assertThatThrownBy(() -> projectService.getProjectOrThrow(projectId))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Project not found");
 
         verify(projectRepository).findById(projectId);

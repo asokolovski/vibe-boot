@@ -1,6 +1,7 @@
 package com.alexeisoki.vibeboot.deployment;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -21,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
+import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @WebMvcTest(DeploymentController.class)
 class DeploymentControllerTest {
@@ -69,6 +71,47 @@ class DeploymentControllerTest {
     }
 
     @Test
+    void triggerDeployment_returnsBadRequestWhenProjectIdIsNull() throws Exception {
+        // Arrange
+        String requestJson = """
+                {
+                  "projectId": null
+                }
+                """;
+
+        // Act + Assert
+        mockMvc.perform(post("/api/deployments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("projectId must not be null"));
+
+        verify(deploymentService, never()).triggerDeployment(any(TriggerDeploymentRequest.class));
+    }
+
+    @Test
+    void triggerDeployment_returnsNotFoundWhenProjectIsMissing() throws Exception {
+        // Arrange
+        String requestJson = """
+                {
+                  "projectId": "00000000-0000-0000-0000-000000000000"
+                }
+                """;
+
+        when(deploymentService.triggerDeployment(any(TriggerDeploymentRequest.class)))
+                .thenThrow(new ResourceNotFoundException("Project not found"));
+
+        // Act + Assert
+        mockMvc.perform(post("/api/deployments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Project not found"));
+
+        verify(deploymentService, times(1)).triggerDeployment(any(TriggerDeploymentRequest.class));
+    }
+
+    @Test
     void getDeployment_returnsOkAndResponseJson() throws Exception {
         // Arrange
         UUID projectId = UUID.randomUUID();
@@ -96,5 +139,29 @@ class DeploymentControllerTest {
                 .andExpect(jsonPath("$.finishedAt").doesNotExist());
 
         verify(deploymentService, times(1)).getDeploymentOrThrow(deploymentId);
+    }
+
+    @Test
+    void getDeployment_returnsNotFoundWhenDeploymentIsMissing() throws Exception {
+        // Arrange
+        UUID deploymentId = UUID.randomUUID();
+
+        when(deploymentService.getDeploymentOrThrow(deploymentId))
+                .thenThrow(new ResourceNotFoundException("Deployment not found"));
+
+        // Act + Assert
+        mockMvc.perform(get("/api/deployments/{deploymentId}", deploymentId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Deployment not found"));
+
+        verify(deploymentService, times(1)).getDeploymentOrThrow(deploymentId);
+    }
+
+    @Test
+    void getDeployment_returnsBadRequestWhenDeploymentIdIsInvalid() throws Exception {
+        // Act + Assert
+        mockMvc.perform(get("/api/deployments/fake-id"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("deploymentId must be a valid UUID"));
     }
 }

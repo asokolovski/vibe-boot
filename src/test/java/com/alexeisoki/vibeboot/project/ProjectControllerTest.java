@@ -1,6 +1,7 @@
 package com.alexeisoki.vibeboot.project;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,6 +26,7 @@ import com.alexeisoki.vibeboot.deployment.DeploymentStatus;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
+import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @WebMvcTest(ProjectController.class)
 class ProjectControllerTest {
@@ -75,6 +77,30 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.createdAt").value("2026-05-14T12:00:00Z"));
 
         verify(projectService, times(1)).createProject(any(CreateProjectRequest.class));
+    }
+
+    @Test
+    void createProject_returnsBadRequestWhenFieldsAreBlank() throws Exception {
+        // Arrange
+        String requestJson = """
+                {
+                  "name": "",
+                  "repositoryUrl": "",
+                  "branch": "",
+                  "runCommand": ""
+                }
+                """;
+
+        // Act + Assert
+        mockMvc.perform(post("/api/projects")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(
+                        "branch must not be blank, name must not be blank, repositoryUrl must not be blank, runCommand must not be blank"
+                ));
+
+        verify(projectService, never()).createProject(any(CreateProjectRequest.class));
     }
 
     @Test
@@ -134,6 +160,22 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].createdAt").value("2026-05-15T12:00:00Z"))
                 .andExpect(jsonPath("$[0].startedAt").doesNotExist())
                 .andExpect(jsonPath("$[0].finishedAt").doesNotExist());
+
+        verify(deploymentService, times(1)).getDeploymentsForProject(projectId);
+    }
+
+    @Test
+    void getDeploymentsForProject_returnsNotFoundWhenProjectIsMissing() throws Exception {
+        // Arrange
+        UUID projectId = UUID.randomUUID();
+
+        when(deploymentService.getDeploymentsForProject(projectId))
+                .thenThrow(new ResourceNotFoundException("Project not found"));
+
+        // Act + Assert
+        mockMvc.perform(get("/api/projects/{projectId}/deployments", projectId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Project not found"));
 
         verify(deploymentService, times(1)).getDeploymentsForProject(projectId);
     }
