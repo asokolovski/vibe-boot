@@ -10,6 +10,10 @@ Create a `.env` file with your PostgreSQL connection values:
 DB_URL=jdbc:postgresql://localhost:5432/vibe_boot
 DB_USERNAME=your_username
 DB_PASSWORD=your_password
+RABBITMQ_HOST=localhost
+RABBITMQ_PORT=5672
+RABBITMQ_USERNAME=guest
+RABBITMQ_PASSWORD=guest
 ```
 
 Start the app:
@@ -25,6 +29,10 @@ The API runs at `http://localhost:8080`.
 ```bash
 ./gradlew test
 ```
+
+## Docs
+
+- [V2 RabbitMQ Job Queue Architecture Note](docs/v2-rabbitmq-job-queue.md)
 
 ## Manual API Testing
 
