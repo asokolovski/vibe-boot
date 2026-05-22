@@ -22,6 +22,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
+import com.alexeisoki.vibeboot.deployment.queue.DeploymentQueuePublisher;
 import com.alexeisoki.vibeboot.project.Project;
 import com.alexeisoki.vibeboot.project.ProjectService;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
@@ -36,7 +37,7 @@ class DeploymentServiceTest {
     private ProjectService projectService;
 
     @Mock
-    private DeploymentWorker deploymentWorker;
+    private DeploymentQueuePublisher deploymentQueuePublisher;
 
     @Test
     void triggerDeployment_verifiesProjectSavesDeploymentAndReturnsResponse() {
@@ -44,7 +45,7 @@ class DeploymentServiceTest {
         DeploymentService deploymentService = new DeploymentService(
                 deploymentRepository,
                 projectService,
-                deploymentWorker
+                deploymentQueuePublisher
         );
         UUID projectId = UUID.randomUUID();
         UUID deploymentId = UUID.randomUUID();
@@ -80,9 +81,9 @@ class DeploymentServiceTest {
         assertThat(deploymentToSave.getProjectId()).isEqualTo(projectId);
         assertThat(deploymentToSave.getStatus()).isEqualTo(DeploymentStatus.QUEUED);
 
-        InOrder inOrder = inOrder(deploymentRepository, deploymentWorker);
+        InOrder inOrder = inOrder(deploymentRepository, deploymentQueuePublisher);
         inOrder.verify(deploymentRepository).save(any(Deployment.class));
-        inOrder.verify(deploymentWorker).runDeployment(deploymentId);
+        inOrder.verify(deploymentQueuePublisher).publishDeploymentRequested(deploymentId);
     }
 
     @Test
@@ -91,7 +92,7 @@ class DeploymentServiceTest {
         DeploymentService deploymentService = new DeploymentService(
                 deploymentRepository,
                 projectService,
-                deploymentWorker
+                deploymentQueuePublisher
         );
         UUID deploymentId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -120,7 +121,7 @@ class DeploymentServiceTest {
         DeploymentService deploymentService = new DeploymentService(
                 deploymentRepository,
                 projectService,
-                deploymentWorker
+                deploymentQueuePublisher
         );
         UUID deploymentId = UUID.randomUUID();
 
@@ -140,7 +141,7 @@ class DeploymentServiceTest {
         DeploymentService deploymentService = new DeploymentService(
                 deploymentRepository,
                 projectService,
-                deploymentWorker
+                deploymentQueuePublisher
         );
         UUID projectId = UUID.randomUUID();
         UUID firstDeploymentId = UUID.randomUUID();

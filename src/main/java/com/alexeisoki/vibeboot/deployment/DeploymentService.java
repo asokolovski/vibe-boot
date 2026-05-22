@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
+import com.alexeisoki.vibeboot.deployment.queue.DeploymentQueuePublisher;
 import com.alexeisoki.vibeboot.project.ProjectService;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
@@ -18,16 +19,16 @@ import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 public class DeploymentService {
     private final DeploymentRepository deploymentRepository;
     private final ProjectService projectService;
-    private final DeploymentWorker deploymentWorker;
+    private final DeploymentQueuePublisher deploymentQueuePublisher;
 
     public DeploymentService(
             DeploymentRepository deploymentRepository,
             ProjectService projectService,
-            DeploymentWorker deploymentWorker
+            DeploymentQueuePublisher deploymentQueuePublisher
     ) {
         this.deploymentRepository = deploymentRepository;
         this.projectService = projectService;
-        this.deploymentWorker = deploymentWorker;
+        this.deploymentQueuePublisher = deploymentQueuePublisher;
     }
 
     public DeploymentResponse triggerDeployment(TriggerDeploymentRequest request) {
@@ -37,7 +38,7 @@ public class DeploymentService {
         //create new deployment and save it to the database
         Deployment deployment = new Deployment(request.projectId());
         Deployment savedDeployment = deploymentRepository.save(deployment);
-        deploymentWorker.runDeployment(savedDeployment.getId());
+        deploymentQueuePublisher.publishDeploymentRequested(savedDeployment.getId());
 
         return toResponse(savedDeployment);
     }

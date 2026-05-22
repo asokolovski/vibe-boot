@@ -53,8 +53,12 @@ public class Deployment {
     }
 
     public void markRunning() {
+        markRunning(Instant.now());
+    }
+
+    public void markRunning(Instant startedAt) {
         status = DeploymentStatus.RUNNING;
-        startedAt = Instant.now();
+        this.startedAt = startedAt;
     }
 
     public void markFinished(DeploymentStatus finishedStatus) {

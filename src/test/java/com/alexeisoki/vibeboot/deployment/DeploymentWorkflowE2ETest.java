@@ -2,9 +2,15 @@ package com.alexeisoki.vibeboot.deployment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +21,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
@@ -170,16 +177,28 @@ class DeploymentWorkflowE2ETest {
     }
 
     @TestConfiguration
-    static class DeterministicDeploymentWorkerConfig {
+    static class DeterministicDeploymentQueueConfig {
 
         @Bean
         @Primary
-        DeploymentWorker deterministicDeploymentWorker(DeploymentRepository deploymentRepository) {
-            return new DeploymentWorker(
+        DeploymentExecutor deterministicDeploymentExecutor(DeploymentRepository deploymentRepository) {
+            return new DeploymentExecutor(
                     deploymentRepository,
                     () -> true,
                     Duration.ofMillis(300)
             );
+        }
+
+        @Bean
+        @Primary
+        RabbitTemplate deterministicRabbitTemplate(DeploymentExecutor deploymentExecutor) {
+            RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
+            doAnswer(invocation -> {
+                String deploymentId = invocation.getArgument(2, String.class);
+                CompletableFuture.runAsync(() -> deploymentExecutor.execute(UUID.fromString(deploymentId)));
+                return null;
+            }).when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
+            return rabbitTemplate;
         }
     }
 }

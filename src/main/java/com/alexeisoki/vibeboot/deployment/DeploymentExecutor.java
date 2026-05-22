@@ -1,25 +1,25 @@
 package com.alexeisoki.vibeboot.deployment;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BooleanSupplier;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
-@Service
-public class DeploymentWorker {
+@Component
+public class DeploymentExecutor {
 
     private final DeploymentRepository deploymentRepository;
     private final BooleanSupplier successChooser;
     private final Duration simulatedDeploymentTime;
 
     @Autowired
-    public DeploymentWorker(DeploymentRepository deploymentRepository) {
+    public DeploymentExecutor(DeploymentRepository deploymentRepository) {
         this(
                 deploymentRepository,
                 () -> ThreadLocalRandom.current().nextBoolean(),
@@ -27,7 +27,7 @@ public class DeploymentWorker {
         );
     }
 
-    DeploymentWorker(
+    DeploymentExecutor(
             DeploymentRepository deploymentRepository,
             BooleanSupplier successChooser,
             Duration simulatedDeploymentTime
@@ -37,13 +37,27 @@ public class DeploymentWorker {
         this.simulatedDeploymentTime = simulatedDeploymentTime;
     }
 
-    @Async("deploymentTaskExecutor")
-    public void runDeployment(UUID deploymentId) {
+    public void execute(UUID deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment not found"));
 
-        deployment.markRunning();
-        deploymentRepository.save(deployment);
+        if (deployment.getStatus() != DeploymentStatus.QUEUED) {
+            return;
+        }
+
+        Instant startedAt = Instant.now();
+        int startedDeployments = deploymentRepository.markRunningIfQueued(
+                deploymentId,
+                startedAt,
+                DeploymentStatus.QUEUED,
+                DeploymentStatus.RUNNING
+        );
+
+        if (startedDeployments == 0) {
+            return;
+        }
+
+        deployment.markRunning(startedAt);
 
         sleep();
 
@@ -59,7 +73,7 @@ public class DeploymentWorker {
             Thread.sleep(simulatedDeploymentTime.toMillis());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Deployment worker was interrupted", exception);
+            throw new IllegalStateException("Deployment executor was interrupted", exception);
         }
     }
 }
