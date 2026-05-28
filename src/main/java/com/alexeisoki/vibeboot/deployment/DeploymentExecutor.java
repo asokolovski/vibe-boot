@@ -15,13 +15,18 @@ import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 public class DeploymentExecutor {
 
     private final DeploymentRepository deploymentRepository;
+    private final DeploymentLogService deploymentLogService;
     private final BooleanSupplier successChooser;
     private final Duration simulatedDeploymentTime;
 
     @Autowired
-    public DeploymentExecutor(DeploymentRepository deploymentRepository) {
+    public DeploymentExecutor(
+            DeploymentRepository deploymentRepository,
+            DeploymentLogService deploymentLogService
+    ) {
         this(
                 deploymentRepository,
+                deploymentLogService,
                 () -> ThreadLocalRandom.current().nextBoolean(),
                 Duration.ofSeconds(5)
         );
@@ -29,10 +34,12 @@ public class DeploymentExecutor {
 
     DeploymentExecutor(
             DeploymentRepository deploymentRepository,
+            DeploymentLogService deploymentLogService,
             BooleanSupplier successChooser,
             Duration simulatedDeploymentTime
     ) {
         this.deploymentRepository = deploymentRepository;
+        this.deploymentLogService = deploymentLogService;
         this.successChooser = successChooser;
         this.simulatedDeploymentTime = simulatedDeploymentTime;
     }
@@ -58,6 +65,8 @@ public class DeploymentExecutor {
         }
 
         deployment.markRunning(startedAt);
+        deploymentLogService.appendLog(deploymentId, "Deployment started");
+        deploymentLogService.appendLog(deploymentId, "Fake deployment running");
 
         sleep();
 
@@ -66,6 +75,13 @@ public class DeploymentExecutor {
                 : DeploymentStatus.FAILED;
         deployment.markFinished(finishedStatus);
         deploymentRepository.save(deployment);
+        deploymentLogService.appendLog(deploymentId, toFinishedLogMessage(finishedStatus));
+    }
+
+    private String toFinishedLogMessage(DeploymentStatus finishedStatus) {
+        return finishedStatus == DeploymentStatus.SUCCESS
+                ? "Deployment succeeded"
+                : "Deployment failed";
     }
 
     private void sleep() {

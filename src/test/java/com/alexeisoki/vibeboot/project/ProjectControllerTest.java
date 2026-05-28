@@ -51,6 +51,9 @@ class ProjectControllerTest {
                 "https://github.com/alexeisoko/payment-api",
                 "main",
                 "./gradlew bootRun",
+                "Dockerfile",
+                8080,
+                "/health",
                 createdAt
         );
         String requestJson = """
@@ -74,6 +77,9 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.repositoryUrl").value("https://github.com/alexeisoko/payment-api"))
                 .andExpect(jsonPath("$.branch").value("main"))
                 .andExpect(jsonPath("$.runCommand").value("./gradlew bootRun"))
+                .andExpect(jsonPath("$.dockerfilePath").value("Dockerfile"))
+                .andExpect(jsonPath("$.containerPort").value(8080))
+                .andExpect(jsonPath("$.healthCheckPath").value("/health"))
                 .andExpect(jsonPath("$.createdAt").value("2026-05-14T12:00:00Z"));
 
         verify(projectService, times(1)).createProject(any(CreateProjectRequest.class));
@@ -114,6 +120,9 @@ class ProjectControllerTest {
                 "https://github.com/alexeisoko/payment-api",
                 "main",
                 "./gradlew bootRun",
+                "Dockerfile",
+                8080,
+                "/health",
                 createdAt
         );
 
@@ -128,6 +137,9 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].repositoryUrl").value("https://github.com/alexeisoko/payment-api"))
                 .andExpect(jsonPath("$[0].branch").value("main"))
                 .andExpect(jsonPath("$[0].runCommand").value("./gradlew bootRun"))
+                .andExpect(jsonPath("$[0].dockerfilePath").value("Dockerfile"))
+                .andExpect(jsonPath("$[0].containerPort").value(8080))
+                .andExpect(jsonPath("$[0].healthCheckPath").value("/health"))
                 .andExpect(jsonPath("$[0].createdAt").value("2026-05-14T12:00:00Z"));
 
         verify(projectService, times(1)).getAllProjects();
@@ -145,6 +157,11 @@ class ProjectControllerTest {
                 DeploymentStatus.QUEUED,
                 createdAt,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null
         );
 
@@ -159,7 +176,12 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].status").value("QUEUED"))
                 .andExpect(jsonPath("$[0].createdAt").value("2026-05-15T12:00:00Z"))
                 .andExpect(jsonPath("$[0].startedAt").doesNotExist())
-                .andExpect(jsonPath("$[0].finishedAt").doesNotExist());
+                .andExpect(jsonPath("$[0].finishedAt").doesNotExist())
+                .andExpect(jsonPath("$[0].imageName").doesNotExist())
+                .andExpect(jsonPath("$[0].containerId").doesNotExist())
+                .andExpect(jsonPath("$[0].hostPort").doesNotExist())
+                .andExpect(jsonPath("$[0].containerPort").doesNotExist())
+                .andExpect(jsonPath("$[0].deploymentUrl").doesNotExist());
 
         verify(deploymentService, times(1)).getDeploymentsForProject(projectId);
     }

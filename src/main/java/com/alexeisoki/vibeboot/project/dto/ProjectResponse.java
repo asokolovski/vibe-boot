@@ -9,6 +9,9 @@ public record ProjectResponse(
         String repositoryUrl,
         String branch,
         String runCommand,
+        String dockerfilePath,
+        Integer containerPort,
+        String healthCheckPath,
         Instant createdAt
 ) {
 }

@@ -11,6 +11,11 @@ public record DeploymentResponse(
         DeploymentStatus status,
         Instant createdAt,
         Instant startedAt,
-        Instant finishedAt
+        Instant finishedAt,
+        String imageName,
+        String containerId,
+        Integer hostPort,
+        Integer containerPort,
+        String deploymentUrl
 ) {
 }

@@ -1,4 +1,5 @@
 .env
+tickets.txt
 HELP.md
 .gradle
 build/

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,6 +16,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -26,12 +28,16 @@ class DeploymentExecutorTest {
     @Mock
     private DeploymentRepository deploymentRepository;
 
+    @Mock
+    private DeploymentLogService deploymentLogService;
+
     @Test
     void execute_marksDeploymentRunningThenSuccess() {
         UUID deploymentId = UUID.randomUUID();
         Deployment deployment = new Deployment(UUID.randomUUID());
         DeploymentExecutor deploymentExecutor = new DeploymentExecutor(
                 deploymentRepository,
+                deploymentLogService,
                 () -> true,
                 Duration.ZERO
         );
@@ -59,6 +65,11 @@ class DeploymentExecutorTest {
                 eq(DeploymentStatus.RUNNING)
         );
         verify(deploymentRepository).save(deployment);
+        InOrder inOrder = inOrder(deploymentLogService, deploymentRepository);
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Deployment started");
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Fake deployment running");
+        inOrder.verify(deploymentRepository).save(deployment);
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Deployment succeeded");
     }
 
     @Test
@@ -67,6 +78,7 @@ class DeploymentExecutorTest {
         Deployment deployment = new Deployment(UUID.randomUUID());
         DeploymentExecutor deploymentExecutor = new DeploymentExecutor(
                 deploymentRepository,
+                deploymentLogService,
                 () -> false,
                 Duration.ZERO
         );
@@ -94,6 +106,11 @@ class DeploymentExecutorTest {
                 eq(DeploymentStatus.RUNNING)
         );
         verify(deploymentRepository).save(deployment);
+        InOrder inOrder = inOrder(deploymentLogService, deploymentRepository);
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Deployment started");
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Fake deployment running");
+        inOrder.verify(deploymentRepository).save(deployment);
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Deployment failed");
     }
 
     @Test
@@ -103,6 +120,7 @@ class DeploymentExecutorTest {
         deployment.markRunning();
         DeploymentExecutor deploymentExecutor = new DeploymentExecutor(
                 deploymentRepository,
+                deploymentLogService,
                 () -> {
                     throw new AssertionError("Already running deployment should not execute");
                 },
@@ -123,6 +141,7 @@ class DeploymentExecutorTest {
                 any(DeploymentStatus.class)
         );
         verify(deploymentRepository, never()).save(any(Deployment.class));
+        verify(deploymentLogService, never()).appendLog(any(UUID.class), any(String.class));
     }
 
     @Test
@@ -132,6 +151,7 @@ class DeploymentExecutorTest {
         deployment.markFinished(DeploymentStatus.SUCCESS);
         DeploymentExecutor deploymentExecutor = new DeploymentExecutor(
                 deploymentRepository,
+                deploymentLogService,
                 () -> {
                     throw new AssertionError("Finished deployment should not execute again");
                 },
@@ -152,6 +172,7 @@ class DeploymentExecutorTest {
                 any(DeploymentStatus.class)
         );
         verify(deploymentRepository, never()).save(any(Deployment.class));
+        verify(deploymentLogService, never()).appendLog(any(UUID.class), any(String.class));
     }
 
     @Test
@@ -160,6 +181,7 @@ class DeploymentExecutorTest {
         Deployment deployment = new Deployment(UUID.randomUUID());
         DeploymentExecutor deploymentExecutor = new DeploymentExecutor(
                 deploymentRepository,
+                deploymentLogService,
                 () -> {
                     throw new AssertionError("Deployment should not execute after losing the start race");
                 },
@@ -186,6 +208,7 @@ class DeploymentExecutorTest {
                 eq(DeploymentStatus.RUNNING)
         );
         verify(deploymentRepository, never()).save(any(Deployment.class));
+        verify(deploymentLogService, never()).appendLog(any(UUID.class), any(String.class));
     }
 
     @Test
@@ -193,6 +216,7 @@ class DeploymentExecutorTest {
         UUID deploymentId = UUID.randomUUID();
         DeploymentExecutor deploymentExecutor = new DeploymentExecutor(
                 deploymentRepository,
+                deploymentLogService,
                 () -> true,
                 Duration.ZERO
         );

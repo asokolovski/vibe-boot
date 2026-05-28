@@ -72,6 +72,11 @@ class DeploymentServiceTest {
         assertThat(response.createdAt()).isEqualTo(createdAt);
         assertThat(response.startedAt()).isNull();
         assertThat(response.finishedAt()).isNull();
+        assertThat(response.imageName()).isNull();
+        assertThat(response.containerId()).isNull();
+        assertThat(response.hostPort()).isNull();
+        assertThat(response.containerPort()).isNull();
+        assertThat(response.deploymentUrl()).isNull();
 
         verify(projectService).getProjectOrThrow(projectId);
 
@@ -98,6 +103,13 @@ class DeploymentServiceTest {
         UUID projectId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
         Deployment deployment = deploymentWithGeneratedFields(deploymentId, projectId, createdAt);
+        deployment.recordDockerRuntime(
+                "vibeboot-payment-api-dep123",
+                "abc123",
+                49152,
+                8080,
+                "http://localhost:49152"
+        );
 
         when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
 
@@ -111,6 +123,11 @@ class DeploymentServiceTest {
         assertThat(response.createdAt()).isEqualTo(createdAt);
         assertThat(response.startedAt()).isNull();
         assertThat(response.finishedAt()).isNull();
+        assertThat(response.imageName()).isEqualTo("vibeboot-payment-api-dep123");
+        assertThat(response.containerId()).isEqualTo("abc123");
+        assertThat(response.hostPort()).isEqualTo(49152);
+        assertThat(response.containerPort()).isEqualTo(8080);
+        assertThat(response.deploymentUrl()).isEqualTo("http://localhost:49152");
 
         verify(deploymentRepository).findById(deploymentId);
     }
@@ -172,12 +189,22 @@ class DeploymentServiceTest {
         assertThat(responses.get(0).createdAt()).isEqualTo(firstCreatedAt);
         assertThat(responses.get(0).startedAt()).isNull();
         assertThat(responses.get(0).finishedAt()).isNull();
+        assertThat(responses.get(0).imageName()).isNull();
+        assertThat(responses.get(0).containerId()).isNull();
+        assertThat(responses.get(0).hostPort()).isNull();
+        assertThat(responses.get(0).containerPort()).isNull();
+        assertThat(responses.get(0).deploymentUrl()).isNull();
         assertThat(responses.get(1).id()).isEqualTo(secondDeploymentId);
         assertThat(responses.get(1).projectId()).isEqualTo(projectId);
         assertThat(responses.get(1).status()).isEqualTo(DeploymentStatus.QUEUED);
         assertThat(responses.get(1).createdAt()).isEqualTo(secondCreatedAt);
         assertThat(responses.get(1).startedAt()).isNull();
         assertThat(responses.get(1).finishedAt()).isNull();
+        assertThat(responses.get(1).imageName()).isNull();
+        assertThat(responses.get(1).containerId()).isNull();
+        assertThat(responses.get(1).hostPort()).isNull();
+        assertThat(responses.get(1).containerPort()).isNull();
+        assertThat(responses.get(1).deploymentUrl()).isNull();
 
         verify(projectService).getProjectOrThrow(projectId);
         verify(deploymentRepository).findByProjectIdOrderByCreatedAtDesc(projectId);

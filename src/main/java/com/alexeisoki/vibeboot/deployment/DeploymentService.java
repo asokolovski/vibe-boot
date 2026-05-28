@@ -68,7 +68,12 @@ public class DeploymentService {
                 deployment.getStatus(),
                 deployment.getCreatedAt(),
                 deployment.getStartedAt(),
-                deployment.getFinishedAt()
+                deployment.getFinishedAt(),
+                deployment.getImageName(),
+                deployment.getContainerId(),
+                deployment.getHostPort(),
+                deployment.getContainerPort(),
+                deployment.getDeploymentUrl()
         );
     }
 

@@ -25,6 +25,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
+import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
@@ -40,6 +41,10 @@ class DeploymentWorkflowE2ETest {
             };
 
     private static final ParameterizedTypeReference<List<DeploymentResponse>> DEPLOYMENT_LIST =
+            new ParameterizedTypeReference<>() {
+            };
+
+    private static final ParameterizedTypeReference<List<DeploymentLogResponse>> DEPLOYMENT_LOG_LIST =
             new ParameterizedTypeReference<>() {
             };
 
@@ -83,6 +88,11 @@ class DeploymentWorkflowE2ETest {
         assertThat(queuedDeployment.createdAt()).isNotNull();
         assertThat(queuedDeployment.startedAt()).isNull();
         assertThat(queuedDeployment.finishedAt()).isNull();
+        assertThat(queuedDeployment.imageName()).isNull();
+        assertThat(queuedDeployment.containerId()).isNull();
+        assertThat(queuedDeployment.hostPort()).isNull();
+        assertThat(queuedDeployment.containerPort()).isNull();
+        assertThat(queuedDeployment.deploymentUrl()).isNull();
 
         await()
                 .pollDelay(Duration.ZERO)
@@ -106,6 +116,11 @@ class DeploymentWorkflowE2ETest {
                     assertThat(deployment.status()).isEqualTo(DeploymentStatus.SUCCESS);
                     assertThat(deployment.startedAt()).isNotNull();
                     assertThat(deployment.finishedAt()).isNotNull();
+                    assertThat(deployment.imageName()).isNull();
+                    assertThat(deployment.containerId()).isNull();
+                    assertThat(deployment.hostPort()).isNull();
+                    assertThat(deployment.containerPort()).isNull();
+                    assertThat(deployment.deploymentUrl()).isNull();
                 });
 
         List<DeploymentResponse> deploymentHistory = restTestClient.get()
@@ -121,6 +136,22 @@ class DeploymentWorkflowE2ETest {
                 .hasSize(1);
         assertThat(deploymentHistory.get(0).id()).isEqualTo(queuedDeployment.id());
         assertThat(deploymentHistory.get(0).status()).isEqualTo(DeploymentStatus.SUCCESS);
+
+        await()
+                .pollDelay(Duration.ZERO)
+                .pollInterval(Duration.ofMillis(20))
+                .atMost(Duration.ofSeconds(2))
+                .untilAsserted(() -> {
+                    List<DeploymentLogResponse> logs = getDeploymentLogs(queuedDeployment);
+
+                    assertThat(logs)
+                            .extracting(DeploymentLogResponse::message)
+                            .containsExactly(
+                                    "Deployment started",
+                                    "Fake deployment running",
+                                    "Deployment succeeded"
+                            );
+                });
     }
 
     @Test
@@ -159,6 +190,9 @@ class DeploymentWorkflowE2ETest {
         assertThat(project).isNotNull();
         assertThat(project.id()).isNotNull();
         assertThat(project.name()).isEqualTo(name);
+        assertThat(project.dockerfilePath()).isEqualTo("Dockerfile");
+        assertThat(project.containerPort()).isEqualTo(8080);
+        assertThat(project.healthCheckPath()).isEqualTo("/health");
         assertThat(project.createdAt()).isNotNull();
         return project;
     }
@@ -176,14 +210,31 @@ class DeploymentWorkflowE2ETest {
         return response;
     }
 
+    private List<DeploymentLogResponse> getDeploymentLogs(DeploymentResponse deployment) {
+        List<DeploymentLogResponse> response = restTestClient.get()
+                .uri("/api/deployments/{deploymentId}/logs", deployment.id())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(DEPLOYMENT_LOG_LIST)
+                .returnResult()
+                .getResponseBody();
+
+        assertThat(response).isNotNull();
+        return response;
+    }
+
     @TestConfiguration
     static class DeterministicDeploymentQueueConfig {
 
         @Bean
         @Primary
-        DeploymentExecutor deterministicDeploymentExecutor(DeploymentRepository deploymentRepository) {
+        DeploymentExecutor deterministicDeploymentExecutor(
+                DeploymentRepository deploymentRepository,
+                DeploymentLogService deploymentLogService
+        ) {
             return new DeploymentExecutor(
                     deploymentRepository,
+                    deploymentLogService,
                     () -> true,
                     Duration.ofMillis(300)
             );

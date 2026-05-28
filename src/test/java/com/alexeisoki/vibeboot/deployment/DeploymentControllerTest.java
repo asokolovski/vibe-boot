@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
@@ -33,6 +35,9 @@ class DeploymentControllerTest {
     @MockitoBean
     private DeploymentService deploymentService;
 
+    @MockitoBean
+    private DeploymentLogService deploymentLogService;
+
     @Test
     void triggerDeployment_returnsCreatedAndResponseJson() throws Exception {
         // Arrange
@@ -45,7 +50,12 @@ class DeploymentControllerTest {
                 DeploymentStatus.QUEUED,
                 createdAt,
                 null,
-                null
+                null,
+                "vibeboot-payment-api-dep123",
+                "abc123",
+                49152,
+                8080,
+                "http://localhost:49152"
         );
         String requestJson = """
                 {
@@ -65,7 +75,12 @@ class DeploymentControllerTest {
                 .andExpect(jsonPath("$.status").value("QUEUED"))
                 .andExpect(jsonPath("$.createdAt").value("2026-05-15T12:00:00Z"))
                 .andExpect(jsonPath("$.startedAt").doesNotExist())
-                .andExpect(jsonPath("$.finishedAt").doesNotExist());
+                .andExpect(jsonPath("$.finishedAt").doesNotExist())
+                .andExpect(jsonPath("$.imageName").value("vibeboot-payment-api-dep123"))
+                .andExpect(jsonPath("$.containerId").value("abc123"))
+                .andExpect(jsonPath("$.hostPort").value(49152))
+                .andExpect(jsonPath("$.containerPort").value(8080))
+                .andExpect(jsonPath("$.deploymentUrl").value("http://localhost:49152"));
 
         verify(deploymentService, times(1)).triggerDeployment(any(TriggerDeploymentRequest.class));
     }
@@ -123,6 +138,11 @@ class DeploymentControllerTest {
                 DeploymentStatus.QUEUED,
                 createdAt,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null
         );
 
@@ -136,7 +156,12 @@ class DeploymentControllerTest {
                 .andExpect(jsonPath("$.status").value("QUEUED"))
                 .andExpect(jsonPath("$.createdAt").value("2026-05-15T12:00:00Z"))
                 .andExpect(jsonPath("$.startedAt").doesNotExist())
-                .andExpect(jsonPath("$.finishedAt").doesNotExist());
+                .andExpect(jsonPath("$.finishedAt").doesNotExist())
+                .andExpect(jsonPath("$.imageName").doesNotExist())
+                .andExpect(jsonPath("$.containerId").doesNotExist())
+                .andExpect(jsonPath("$.hostPort").doesNotExist())
+                .andExpect(jsonPath("$.containerPort").doesNotExist())
+                .andExpect(jsonPath("$.deploymentUrl").doesNotExist());
 
         verify(deploymentService, times(1)).getDeploymentOrThrow(deploymentId);
     }
@@ -161,6 +186,68 @@ class DeploymentControllerTest {
     void getDeployment_returnsBadRequestWhenDeploymentIdIsInvalid() throws Exception {
         // Act + Assert
         mockMvc.perform(get("/api/deployments/fake-id"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("deploymentId must be a valid UUID"));
+    }
+
+    @Test
+    void getDeploymentLogs_returnsOkAndResponseJson() throws Exception {
+        // Arrange
+        UUID deploymentId = UUID.randomUUID();
+        Instant firstCreatedAt = Instant.parse("2026-05-25T19:10:00Z");
+        Instant secondCreatedAt = Instant.parse("2026-05-25T19:10:03Z");
+
+        when(deploymentLogService.getLogs(deploymentId)).thenReturn(List.of(
+                new DeploymentLogResponse("Deployment queued", firstCreatedAt),
+                new DeploymentLogResponse("Building Docker image", secondCreatedAt)
+        ));
+
+        // Act + Assert
+        mockMvc.perform(get("/api/deployments/{deploymentId}/logs", deploymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].message").value("Deployment queued"))
+                .andExpect(jsonPath("$[0].createdAt").value("2026-05-25T19:10:00Z"))
+                .andExpect(jsonPath("$[1].message").value("Building Docker image"))
+                .andExpect(jsonPath("$[1].createdAt").value("2026-05-25T19:10:03Z"));
+
+        verify(deploymentLogService, times(1)).getLogs(deploymentId);
+    }
+
+    @Test
+    void getDeploymentLogs_returnsNotFoundWhenDeploymentIsMissing() throws Exception {
+        // Arrange
+        UUID deploymentId = UUID.randomUUID();
+
+        when(deploymentLogService.getLogs(deploymentId))
+                .thenThrow(new ResourceNotFoundException("Deployment not found"));
+
+        // Act + Assert
+        mockMvc.perform(get("/api/deployments/{deploymentId}/logs", deploymentId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Deployment not found"));
+
+        verify(deploymentLogService, times(1)).getLogs(deploymentId);
+    }
+
+    @Test
+    void getDeploymentLogs_returnsEmptyListWhenDeploymentHasNoLogs() throws Exception {
+        // Arrange
+        UUID deploymentId = UUID.randomUUID();
+
+        when(deploymentLogService.getLogs(deploymentId)).thenReturn(List.of());
+
+        // Act + Assert
+        mockMvc.perform(get("/api/deployments/{deploymentId}/logs", deploymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+
+        verify(deploymentLogService, times(1)).getLogs(deploymentId);
+    }
+
+    @Test
+    void getDeploymentLogs_returnsBadRequestWhenDeploymentIdIsInvalid() throws Exception {
+        // Act + Assert
+        mockMvc.perform(get("/api/deployments/fake-id/logs"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("deploymentId must be a valid UUID"));
     }

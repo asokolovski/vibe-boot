@@ -1,5 +1,6 @@
 package com.alexeisoki.vibeboot.deployment;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 
@@ -20,9 +22,14 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/deployments")
 public class DeploymentController {
     private final DeploymentService deploymentService;
+    private final DeploymentLogService deploymentLogService;
 
-    public DeploymentController(DeploymentService deploymentService) {
+    public DeploymentController(
+            DeploymentService deploymentService,
+            DeploymentLogService deploymentLogService
+    ) {
         this.deploymentService = deploymentService;
+        this.deploymentLogService = deploymentLogService;
     }
 
     @PostMapping
@@ -35,6 +42,11 @@ public class DeploymentController {
     @GetMapping("/{deploymentId}")
     public DeploymentResponse getDeployment(@PathVariable UUID deploymentId) {
         return deploymentService.getDeploymentOrThrow(deploymentId);
+    }
+
+    @GetMapping("/{deploymentId}/logs")
+    public List<DeploymentLogResponse> getDeploymentLogs(@PathVariable UUID deploymentId) {
+        return deploymentLogService.getLogs(deploymentId);
     }
      
 }

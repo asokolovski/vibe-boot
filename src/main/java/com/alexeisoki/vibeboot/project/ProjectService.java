@@ -24,7 +24,10 @@ public class ProjectService {
                 request.name(),
                 request.repositoryUrl(),
                 request.branch(),
-                request.runCommand()
+                request.runCommand(),
+                request.dockerfilePath(),
+                request.containerPort(),
+                request.healthCheckPath()
         );
 
         Project savedProject = projectRepository.save(project);
@@ -58,6 +61,9 @@ public class ProjectService {
                 project.getRepositoryUrl(),
                 project.getBranch(),
                 project.getRunCommand(),
+                project.getDockerfilePath(),
+                project.getContainerPort(),
+                project.getHealthCheckPath(),
                 project.getCreatedAt()
         );
     }

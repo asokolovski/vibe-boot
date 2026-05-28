@@ -44,6 +44,21 @@ public class Deployment {
     @Column(nullable = true)    
     private Instant finishedAt;
 
+    @Column(nullable = true)
+    private String imageName;
+
+    @Column(nullable = true)
+    private String containerId;
+
+    @Column(nullable = true)
+    private Integer hostPort;
+
+    @Column(nullable = true)
+    private Integer containerPort;
+
+    @Column(nullable = true)
+    private String deploymentUrl;
+
     protected Deployment() {
     }
 
@@ -68,6 +83,20 @@ public class Deployment {
 
         status = finishedStatus;
         finishedAt = Instant.now();
+    }
+
+    public void recordDockerRuntime(
+            String imageName,
+            String containerId,
+            Integer hostPort,
+            Integer containerPort,
+            String deploymentUrl
+    ) {
+        this.imageName = imageName;
+        this.containerId = containerId;
+        this.hostPort = hostPort;
+        this.containerPort = containerPort;
+        this.deploymentUrl = deploymentUrl;
     }
 
     // @PrePersist runs right before JPA inserts this entity into the database.
@@ -100,5 +129,25 @@ public class Deployment {
 
     public Instant getFinishedAt() {
         return finishedAt;
+    }
+
+    public String getImageName() {
+        return imageName;
+    }
+
+    public String getContainerId() {
+        return containerId;
+    }
+
+    public Integer getHostPort() {
+        return hostPort;
+    }
+
+    public Integer getContainerPort() {
+        return containerPort;
+    }
+
+    public String getDeploymentUrl() {
+        return deploymentUrl;
     }
 }

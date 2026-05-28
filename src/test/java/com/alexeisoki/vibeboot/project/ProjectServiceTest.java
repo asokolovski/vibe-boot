@@ -59,7 +59,50 @@ class ProjectServiceTest {
         assertThat(response.repositoryUrl()).isEqualTo("https://github.com/alexeisoki/vibe-boot");
         assertThat(response.branch()).isEqualTo("main");
         assertThat(response.runCommand()).isEqualTo("./gradlew bootRun");
+        assertThat(response.dockerfilePath()).isEqualTo("Dockerfile");
+        assertThat(response.containerPort()).isEqualTo(8080);
+        assertThat(response.healthCheckPath()).isEqualTo("/health");
         assertThat(response.createdAt()).isEqualTo(generatedCreatedAt);
+
+        verify(projectRepository).save(any(Project.class));
+    }
+
+    @Test
+    void createProject_usesProvidedDockerRuntimeFields() {
+        // Arrange
+        ProjectService projectService = new ProjectService(projectRepository);
+        CreateProjectRequest request = new CreateProjectRequest(
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main",
+                "./gradlew bootRun",
+                "apps/api/Dockerfile",
+                3000,
+                "/ready"
+        );
+        UUID generatedId = UUID.randomUUID();
+        Instant generatedCreatedAt = Instant.parse("2026-05-14T12:00:00Z");
+        Project savedProject = projectWithGeneratedFields(
+                generatedId,
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main",
+                "./gradlew bootRun",
+                "apps/api/Dockerfile",
+                3000,
+                "/ready",
+                generatedCreatedAt
+        );
+
+        when(projectRepository.save(any(Project.class))).thenReturn(savedProject);
+
+        // Act
+        ProjectResponse response = projectService.createProject(request);
+
+        // Assert
+        assertThat(response.dockerfilePath()).isEqualTo("apps/api/Dockerfile");
+        assertThat(response.containerPort()).isEqualTo(3000);
+        assertThat(response.healthCheckPath()).isEqualTo("/ready");
 
         verify(projectRepository).save(any(Project.class));
     }
@@ -101,12 +144,18 @@ class ProjectServiceTest {
         assertThat(responses.get(0).repositoryUrl()).isEqualTo("https://github.com/example/first");
         assertThat(responses.get(0).branch()).isEqualTo("main");
         assertThat(responses.get(0).runCommand()).isEqualTo("npm start");
+        assertThat(responses.get(0).dockerfilePath()).isEqualTo("Dockerfile");
+        assertThat(responses.get(0).containerPort()).isEqualTo(8080);
+        assertThat(responses.get(0).healthCheckPath()).isEqualTo("/health");
         assertThat(responses.get(0).createdAt()).isEqualTo(firstCreatedAt);
         assertThat(responses.get(1).id()).isEqualTo(secondId);
         assertThat(responses.get(1).name()).isEqualTo("Second App");
         assertThat(responses.get(1).repositoryUrl()).isEqualTo("https://github.com/example/second");
         assertThat(responses.get(1).branch()).isEqualTo("develop");
         assertThat(responses.get(1).runCommand()).isEqualTo("./gradlew bootRun");
+        assertThat(responses.get(1).dockerfilePath()).isEqualTo("Dockerfile");
+        assertThat(responses.get(1).containerPort()).isEqualTo(8080);
+        assertThat(responses.get(1).healthCheckPath()).isEqualTo("/health");
         assertThat(responses.get(1).createdAt()).isEqualTo(secondCreatedAt);
 
         verify(projectRepository).findAll();
@@ -158,7 +207,40 @@ class ProjectServiceTest {
             String runCommand,
             Instant createdAt
     ) {
-        Project project = new Project(name, repositoryUrl, branch, runCommand);
+        Project project = projectWithGeneratedFields(
+                id,
+                name,
+                repositoryUrl,
+                branch,
+                runCommand,
+                null,
+                null,
+                null,
+                createdAt
+        );
+        return project;
+    }
+
+    private static Project projectWithGeneratedFields(
+            UUID id,
+            String name,
+            String repositoryUrl,
+            String branch,
+            String runCommand,
+            String dockerfilePath,
+            Integer containerPort,
+            String healthCheckPath,
+            Instant createdAt
+    ) {
+        Project project = new Project(
+                name,
+                repositoryUrl,
+                branch,
+                runCommand,
+                dockerfilePath,
+                containerPort,
+                healthCheckPath
+        );
         ReflectionTestUtils.setField(project, "id", id);
         ReflectionTestUtils.setField(project, "createdAt", createdAt);
         return project;
