@@ -51,6 +51,7 @@ class ProjectControllerTest {
                 "https://github.com/alexeisoko/payment-api",
                 "main",
                 "./gradlew bootRun",
+                "/home/alexei/projects/sample-app",
                 "Dockerfile",
                 8080,
                 "/health",
@@ -61,7 +62,8 @@ class ProjectControllerTest {
                   "name": "vibe-payment-api",
                   "repositoryUrl": "https://github.com/alexeisoko/payment-api",
                   "branch": "main",
-                  "runCommand": "./gradlew bootRun"
+                  "runCommand": "./gradlew bootRun",
+                  "localPath": "/home/alexei/projects/sample-app"
                 }
                 """;
 
@@ -77,6 +79,7 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.repositoryUrl").value("https://github.com/alexeisoko/payment-api"))
                 .andExpect(jsonPath("$.branch").value("main"))
                 .andExpect(jsonPath("$.runCommand").value("./gradlew bootRun"))
+                .andExpect(jsonPath("$.localPath").value("/home/alexei/projects/sample-app"))
                 .andExpect(jsonPath("$.dockerfilePath").value("Dockerfile"))
                 .andExpect(jsonPath("$.containerPort").value(8080))
                 .andExpect(jsonPath("$.healthCheckPath").value("/health"))
@@ -93,6 +96,7 @@ class ProjectControllerTest {
                   "name": "",
                   "repositoryUrl": "",
                   "branch": "",
+                  "localPath": "",
                   "runCommand": ""
                 }
                 """;
@@ -103,10 +107,49 @@ class ProjectControllerTest {
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(
-                        "branch must not be blank, name must not be blank, repositoryUrl must not be blank, runCommand must not be blank"
+                        "branch must not be blank, localPath must not be blank, name must not be blank, repositoryUrl must not be blank"
                 ));
 
         verify(projectService, never()).createProject(any(CreateProjectRequest.class));
+    }
+
+    @Test
+    void createProject_allowsMissingRunCommand() throws Exception {
+        // Arrange
+        UUID projectId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-14T12:00:00Z");
+        ProjectResponse response = new ProjectResponse(
+                projectId,
+                "vibe-payment-api",
+                "https://github.com/alexeisoko/payment-api",
+                "main",
+                null,
+                "/home/alexei/projects/sample-app",
+                "Dockerfile",
+                8080,
+                "/health",
+                createdAt
+        );
+        String requestJson = """
+                {
+                  "name": "vibe-payment-api",
+                  "repositoryUrl": "https://github.com/alexeisoko/payment-api",
+                  "branch": "main",
+                  "localPath": "/home/alexei/projects/sample-app"
+                }
+                """;
+
+        when(projectService.createProject(any(CreateProjectRequest.class))).thenReturn(response);
+
+        // Act + Assert
+        mockMvc.perform(post("/api/projects")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(projectId.toString()))
+                .andExpect(jsonPath("$.runCommand").doesNotExist());
+
+        verify(projectService, times(1)).createProject(any(CreateProjectRequest.class));
     }
 
     @Test
@@ -120,6 +163,7 @@ class ProjectControllerTest {
                 "https://github.com/alexeisoko/payment-api",
                 "main",
                 "./gradlew bootRun",
+                "/home/alexei/projects/sample-app",
                 "Dockerfile",
                 8080,
                 "/health",
@@ -137,6 +181,7 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].repositoryUrl").value("https://github.com/alexeisoko/payment-api"))
                 .andExpect(jsonPath("$[0].branch").value("main"))
                 .andExpect(jsonPath("$[0].runCommand").value("./gradlew bootRun"))
+                .andExpect(jsonPath("$[0].localPath").value("/home/alexei/projects/sample-app"))
                 .andExpect(jsonPath("$[0].dockerfilePath").value("Dockerfile"))
                 .andExpect(jsonPath("$[0].containerPort").value(8080))
                 .andExpect(jsonPath("$[0].healthCheckPath").value("/health"))

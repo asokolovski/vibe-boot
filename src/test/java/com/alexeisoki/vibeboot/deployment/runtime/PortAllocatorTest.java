@@ -21,7 +21,7 @@ class PortAllocatorTest {
 
     @Test
     void allocatePort_skipsPortThatIsAlreadyInUse() throws IOException {
-        int occupiedPort = findAvailablePort();
+        int occupiedPort = findConsecutiveAvailablePorts();
 
         try (ServerSocket ignored = new ServerSocket(occupiedPort)) {
             PortAllocator portAllocator = new PortAllocator(occupiedPort, occupiedPort + 1);
@@ -55,6 +55,26 @@ class PortAllocatorTest {
     private static int findAvailablePort() throws IOException {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
+        }
+    }
+
+    private static int findConsecutiveAvailablePorts() throws IOException {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            int firstPort = findAvailablePort();
+            int secondPort = firstPort + 1;
+            if (secondPort <= 65535 && isAvailable(secondPort)) {
+                return firstPort;
+            }
+        }
+
+        throw new IOException("Could not find consecutive available ports");
+    }
+
+    private static boolean isAvailable(int port) {
+        try (ServerSocket ignored = new ServerSocket(port)) {
+            return true;
+        } catch (IOException exception) {
+            return false;
         }
     }
 }

@@ -40,9 +40,11 @@ public class Project {
     @Column(nullable = false)
     private String branch;
 
-    @NotBlank
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String runCommand;
+
+    @Column(nullable = true)
+    private String localPath;
 
     @Column(nullable = true)
     private String dockerfilePath = DEFAULT_DOCKERFILE_PATH;
@@ -61,7 +63,7 @@ public class Project {
     }
 
     public Project(String name, String repositoryUrl, String branch, String runCommand) {
-        this(name, repositoryUrl, branch, runCommand, null, null, null);
+        this(name, repositoryUrl, branch, runCommand, null, null, null, null);
     }
 
     public Project(
@@ -73,10 +75,24 @@ public class Project {
             Integer containerPort,
             String healthCheckPath
     ) {
+        this(name, repositoryUrl, branch, runCommand, null, dockerfilePath, containerPort, healthCheckPath);
+    }
+
+    public Project(
+            String name,
+            String repositoryUrl,
+            String branch,
+            String runCommand,
+            String localPath,
+            String dockerfilePath,
+            Integer containerPort,
+            String healthCheckPath
+    ) {
         this.name = name;
         this.repositoryUrl = repositoryUrl;
         this.branch = branch;
-        this.runCommand = runCommand;
+        this.runCommand = nullIfBlank(runCommand);
+        this.localPath = nullIfBlank(localPath);
         this.dockerfilePath = defaultIfBlank(dockerfilePath, DEFAULT_DOCKERFILE_PATH);
         this.containerPort = containerPort != null ? containerPort : DEFAULT_CONTAINER_PORT;
         this.healthCheckPath = defaultIfBlank(healthCheckPath, DEFAULT_HEALTH_CHECK_PATH);
@@ -110,6 +126,10 @@ public class Project {
         return runCommand;
     }
 
+    public String getLocalPath() {
+        return localPath;
+    }
+
     public String getDockerfilePath() {
         return defaultIfBlank(dockerfilePath, DEFAULT_DOCKERFILE_PATH);
     }
@@ -128,5 +148,9 @@ public class Project {
 
     private String defaultIfBlank(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private String nullIfBlank(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

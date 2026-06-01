@@ -21,17 +21,31 @@ class ProjectTest {
     }
 
     @Test
+    void constructor_allowsMissingRunCommand() {
+        Project project = new Project(
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main",
+                " "
+        );
+
+        assertThat(project.getRunCommand()).isNull();
+    }
+
+    @Test
     void constructor_storesDockerRuntimeFieldsWhenProvided() {
         Project project = new Project(
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
                 "main",
                 "./gradlew bootRun",
+                "/home/alexei/projects/sample-app",
                 "apps/api/Dockerfile",
                 3000,
                 "/ready"
         );
 
+        assertThat(project.getLocalPath()).isEqualTo("/home/alexei/projects/sample-app");
         assertThat(project.getDockerfilePath()).isEqualTo("apps/api/Dockerfile");
         assertThat(project.getContainerPort()).isEqualTo(3000);
         assertThat(project.getHealthCheckPath()).isEqualTo("/ready");

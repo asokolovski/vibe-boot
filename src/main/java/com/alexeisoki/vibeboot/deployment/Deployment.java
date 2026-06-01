@@ -85,6 +85,10 @@ public class Deployment {
         finishedAt = Instant.now();
     }
 
+    public void markStopped() {
+        status = DeploymentStatus.STOPPED;
+    }
+
     public void recordDockerRuntime(
             String imageName,
             String containerId,
@@ -97,6 +101,10 @@ public class Deployment {
         this.hostPort = hostPort;
         this.containerPort = containerPort;
         this.deploymentUrl = deploymentUrl;
+    }
+
+    public void recordDockerImage(String imageName) {
+        this.imageName = imageName;
     }
 
     // @PrePersist runs right before JPA inserts this entity into the database.

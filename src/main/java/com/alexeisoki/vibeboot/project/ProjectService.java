@@ -25,6 +25,7 @@ public class ProjectService {
                 request.repositoryUrl(),
                 request.branch(),
                 request.runCommand(),
+                request.localPath(),
                 request.dockerfilePath(),
                 request.containerPort(),
                 request.healthCheckPath()
@@ -61,6 +62,7 @@ public class ProjectService {
                 project.getRepositoryUrl(),
                 project.getBranch(),
                 project.getRunCommand(),
+                project.getLocalPath(),
                 project.getDockerfilePath(),
                 project.getContainerPort(),
                 project.getHealthCheckPath(),

@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
+import com.alexeisoki.vibeboot.shared.ResourceConflictException;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @WebMvcTest(DeploymentController.class)
@@ -186,6 +187,86 @@ class DeploymentControllerTest {
     void getDeployment_returnsBadRequestWhenDeploymentIdIsInvalid() throws Exception {
         // Act + Assert
         mockMvc.perform(get("/api/deployments/fake-id"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("deploymentId must be a valid UUID"));
+    }
+
+    @Test
+    void stopDeployment_returnsOkAndResponseJson() throws Exception {
+        // Arrange
+        UUID projectId = UUID.randomUUID();
+        UUID deploymentId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
+        Instant finishedAt = Instant.parse("2026-05-15T12:03:00Z");
+        DeploymentResponse response = new DeploymentResponse(
+                deploymentId,
+                projectId,
+                DeploymentStatus.STOPPED,
+                createdAt,
+                null,
+                finishedAt,
+                "vibeboot-payment-api:" + deploymentId,
+                "abc123",
+                49152,
+                8080,
+                "http://localhost:49152"
+        );
+
+        when(deploymentService.stopDeployment(deploymentId)).thenReturn(response);
+
+        // Act + Assert
+        mockMvc.perform(post("/api/deployments/{deploymentId}/stop", deploymentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(deploymentId.toString()))
+                .andExpect(jsonPath("$.projectId").value(projectId.toString()))
+                .andExpect(jsonPath("$.status").value("STOPPED"))
+                .andExpect(jsonPath("$.createdAt").value("2026-05-15T12:00:00Z"))
+                .andExpect(jsonPath("$.finishedAt").value("2026-05-15T12:03:00Z"))
+                .andExpect(jsonPath("$.imageName").value("vibeboot-payment-api:" + deploymentId))
+                .andExpect(jsonPath("$.containerId").value("abc123"))
+                .andExpect(jsonPath("$.hostPort").value(49152))
+                .andExpect(jsonPath("$.containerPort").value(8080))
+                .andExpect(jsonPath("$.deploymentUrl").value("http://localhost:49152"));
+
+        verify(deploymentService, times(1)).stopDeployment(deploymentId);
+    }
+
+    @Test
+    void stopDeployment_returnsNotFoundWhenDeploymentIsMissing() throws Exception {
+        // Arrange
+        UUID deploymentId = UUID.randomUUID();
+
+        when(deploymentService.stopDeployment(deploymentId))
+                .thenThrow(new ResourceNotFoundException("Deployment not found"));
+
+        // Act + Assert
+        mockMvc.perform(post("/api/deployments/{deploymentId}/stop", deploymentId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Deployment not found"));
+
+        verify(deploymentService, times(1)).stopDeployment(deploymentId);
+    }
+
+    @Test
+    void stopDeployment_returnsConflictWhenDeploymentCannotBeStopped() throws Exception {
+        // Arrange
+        UUID deploymentId = UUID.randomUUID();
+
+        when(deploymentService.stopDeployment(deploymentId))
+                .thenThrow(new ResourceConflictException("Deployment has no running container to stop"));
+
+        // Act + Assert
+        mockMvc.perform(post("/api/deployments/{deploymentId}/stop", deploymentId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Deployment has no running container to stop"));
+
+        verify(deploymentService, times(1)).stopDeployment(deploymentId);
+    }
+
+    @Test
+    void stopDeployment_returnsBadRequestWhenDeploymentIdIsInvalid() throws Exception {
+        // Act + Assert
+        mockMvc.perform(post("/api/deployments/fake-id/stop"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("deploymentId must be a valid UUID"));
     }

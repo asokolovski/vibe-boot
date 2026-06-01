@@ -1,6 +1,5 @@
 package com.alexeisoki.vibeboot.deployment;
 
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -10,25 +9,31 @@ import org.springframework.stereotype.Service;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 import com.alexeisoki.vibeboot.deployment.queue.DeploymentQueuePublisher;
+import com.alexeisoki.vibeboot.deployment.runtime.DockerService;
 import com.alexeisoki.vibeboot.project.ProjectService;
+import com.alexeisoki.vibeboot.shared.ResourceConflictException;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
-
-
 
 @Service
 public class DeploymentService {
     private final DeploymentRepository deploymentRepository;
     private final ProjectService projectService;
     private final DeploymentQueuePublisher deploymentQueuePublisher;
+    private final DockerService dockerService;
+    private final DeploymentLogService deploymentLogService;
 
     public DeploymentService(
             DeploymentRepository deploymentRepository,
             ProjectService projectService,
-            DeploymentQueuePublisher deploymentQueuePublisher
+            DeploymentQueuePublisher deploymentQueuePublisher,
+            DockerService dockerService,
+            DeploymentLogService deploymentLogService
     ) {
         this.deploymentRepository = deploymentRepository;
         this.projectService = projectService;
         this.deploymentQueuePublisher = deploymentQueuePublisher;
+        this.dockerService = dockerService;
+        this.deploymentLogService = deploymentLogService;
     }
 
     public DeploymentResponse triggerDeployment(TriggerDeploymentRequest request) {
@@ -60,6 +65,28 @@ public class DeploymentService {
         return responses;
     }
 
+    public DeploymentResponse stopDeployment(UUID deploymentId) {
+        Deployment deployment = deploymentRepository.findById(deploymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment not found"));
+
+        if (deployment.getStatus() == DeploymentStatus.STOPPED) {
+            throw new ResourceConflictException("Deployment is already stopped");
+        }
+
+        String containerId = deployment.getContainerId();
+        if (containerId == null || containerId.isBlank()) {
+            throw new ResourceConflictException("Deployment has no running container to stop");
+        }
+
+        dockerService.stopContainer(containerId);
+        deployment.markStopped();
+        Deployment savedDeployment = deploymentRepository.save(deployment);
+
+        deploymentLogService.appendLog(deploymentId, "Docker container stopped: " + containerId);
+        deploymentLogService.appendLog(deploymentId, "Deployment stopped");
+
+        return toResponse(savedDeployment);
+    }
 
     private DeploymentResponse toResponse(Deployment deployment) {
         return new DeploymentResponse(
@@ -76,6 +103,4 @@ public class DeploymentService {
                 deployment.getDeploymentUrl()
         );
     }
-
-
 }

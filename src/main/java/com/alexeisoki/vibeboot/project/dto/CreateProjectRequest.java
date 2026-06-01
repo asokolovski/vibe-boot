@@ -11,14 +11,15 @@ public record CreateProjectRequest(
         String repositoryUrl,
         @NotBlank
         String branch,
-        @NotBlank
         String runCommand,
+        @NotBlank
+        String localPath,
         String dockerfilePath,
         @Positive
         Integer containerPort,
         String healthCheckPath
 ) {
-    public CreateProjectRequest(String name, String repositoryUrl, String branch, String runCommand) {
-        this(name, repositoryUrl, branch, runCommand, null, null, null);
+    public CreateProjectRequest(String name, String repositoryUrl, String branch, String runCommand, String localPath) {
+        this(name, repositoryUrl, branch, runCommand, localPath, null, null, null);
     }
 }

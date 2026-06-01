@@ -35,7 +35,8 @@ class ProjectServiceTest {
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
                 "main",
-                "./gradlew bootRun"
+                "./gradlew bootRun",
+                "/home/alexei/projects/sample-app"
         );
         UUID generatedId = UUID.randomUUID();
         Instant generatedCreatedAt = Instant.parse("2026-05-14T12:00:00Z");
@@ -45,6 +46,7 @@ class ProjectServiceTest {
                 "https://github.com/alexeisoki/vibe-boot",
                 "main",
                 "./gradlew bootRun",
+                "/home/alexei/projects/sample-app",
                 generatedCreatedAt
         );
 
@@ -59,6 +61,7 @@ class ProjectServiceTest {
         assertThat(response.repositoryUrl()).isEqualTo("https://github.com/alexeisoki/vibe-boot");
         assertThat(response.branch()).isEqualTo("main");
         assertThat(response.runCommand()).isEqualTo("./gradlew bootRun");
+        assertThat(response.localPath()).isEqualTo("/home/alexei/projects/sample-app");
         assertThat(response.dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(response.containerPort()).isEqualTo(8080);
         assertThat(response.healthCheckPath()).isEqualTo("/health");
@@ -76,6 +79,7 @@ class ProjectServiceTest {
                 "https://github.com/alexeisoki/vibe-boot",
                 "main",
                 "./gradlew bootRun",
+                "/home/alexei/projects/sample-app",
                 "apps/api/Dockerfile",
                 3000,
                 "/ready"
@@ -88,6 +92,7 @@ class ProjectServiceTest {
                 "https://github.com/alexeisoki/vibe-boot",
                 "main",
                 "./gradlew bootRun",
+                "/home/alexei/projects/sample-app",
                 "apps/api/Dockerfile",
                 3000,
                 "/ready",
@@ -100,9 +105,46 @@ class ProjectServiceTest {
         ProjectResponse response = projectService.createProject(request);
 
         // Assert
+        assertThat(response.localPath()).isEqualTo("/home/alexei/projects/sample-app");
         assertThat(response.dockerfilePath()).isEqualTo("apps/api/Dockerfile");
         assertThat(response.containerPort()).isEqualTo(3000);
         assertThat(response.healthCheckPath()).isEqualTo("/ready");
+
+        verify(projectRepository).save(any(Project.class));
+    }
+
+    @Test
+    void createProject_allowsMissingRunCommand() {
+        // Arrange
+        ProjectService projectService = new ProjectService(projectRepository);
+        CreateProjectRequest request = new CreateProjectRequest(
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main",
+                null,
+                "/home/alexei/projects/sample-app"
+        );
+        UUID generatedId = UUID.randomUUID();
+        Instant generatedCreatedAt = Instant.parse("2026-05-14T12:00:00Z");
+        Project savedProject = projectWithGeneratedFields(
+                generatedId,
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main",
+                null,
+                "/home/alexei/projects/sample-app",
+                generatedCreatedAt
+        );
+
+        when(projectRepository.save(any(Project.class))).thenReturn(savedProject);
+
+        // Act
+        ProjectResponse response = projectService.createProject(request);
+
+        // Assert
+        assertThat(response.runCommand()).isNull();
+        assertThat(response.localPath()).isEqualTo("/home/alexei/projects/sample-app");
+        assertThat(response.dockerfilePath()).isEqualTo("Dockerfile");
 
         verify(projectRepository).save(any(Project.class));
     }
@@ -121,6 +163,7 @@ class ProjectServiceTest {
                 "https://github.com/example/first",
                 "main",
                 "npm start",
+                "/home/alexei/projects/first",
                 firstCreatedAt
         );
         Project secondProject = projectWithGeneratedFields(
@@ -129,6 +172,7 @@ class ProjectServiceTest {
                 "https://github.com/example/second",
                 "develop",
                 "./gradlew bootRun",
+                "/home/alexei/projects/second",
                 secondCreatedAt
         );
 
@@ -144,6 +188,7 @@ class ProjectServiceTest {
         assertThat(responses.get(0).repositoryUrl()).isEqualTo("https://github.com/example/first");
         assertThat(responses.get(0).branch()).isEqualTo("main");
         assertThat(responses.get(0).runCommand()).isEqualTo("npm start");
+        assertThat(responses.get(0).localPath()).isEqualTo("/home/alexei/projects/first");
         assertThat(responses.get(0).dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(responses.get(0).containerPort()).isEqualTo(8080);
         assertThat(responses.get(0).healthCheckPath()).isEqualTo("/health");
@@ -153,6 +198,7 @@ class ProjectServiceTest {
         assertThat(responses.get(1).repositoryUrl()).isEqualTo("https://github.com/example/second");
         assertThat(responses.get(1).branch()).isEqualTo("develop");
         assertThat(responses.get(1).runCommand()).isEqualTo("./gradlew bootRun");
+        assertThat(responses.get(1).localPath()).isEqualTo("/home/alexei/projects/second");
         assertThat(responses.get(1).dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(responses.get(1).containerPort()).isEqualTo(8080);
         assertThat(responses.get(1).healthCheckPath()).isEqualTo("/health");
@@ -205,6 +251,7 @@ class ProjectServiceTest {
             String repositoryUrl,
             String branch,
             String runCommand,
+            String localPath,
             Instant createdAt
     ) {
         Project project = projectWithGeneratedFields(
@@ -213,6 +260,7 @@ class ProjectServiceTest {
                 repositoryUrl,
                 branch,
                 runCommand,
+                localPath,
                 null,
                 null,
                 null,
@@ -227,6 +275,7 @@ class ProjectServiceTest {
             String repositoryUrl,
             String branch,
             String runCommand,
+            String localPath,
             String dockerfilePath,
             Integer containerPort,
             String healthCheckPath,
@@ -237,6 +286,7 @@ class ProjectServiceTest {
                 repositoryUrl,
                 branch,
                 runCommand,
+                localPath,
                 dockerfilePath,
                 containerPort,
                 healthCheckPath

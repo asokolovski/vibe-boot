@@ -3,10 +3,15 @@ package com.alexeisoki.vibeboot.deployment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.net.URI;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +33,14 @@ import org.springframework.test.web.servlet.client.RestTestClient;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
+import com.alexeisoki.vibeboot.deployment.runtime.DockerBuildResult;
+import com.alexeisoki.vibeboot.deployment.runtime.DockerRunResult;
+import com.alexeisoki.vibeboot.deployment.runtime.DockerService;
+import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckResult;
+import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckService;
+import com.alexeisoki.vibeboot.deployment.runtime.PortAllocator;
+import com.alexeisoki.vibeboot.project.Project;
+import com.alexeisoki.vibeboot.project.ProjectService;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
 
@@ -49,6 +62,9 @@ class DeploymentWorkflowE2ETest {
             };
 
     private final RestTestClient restTestClient;
+
+    @Autowired
+    private DockerService dockerService;
 
     @Autowired
     DeploymentWorkflowE2ETest(RestTestClient restTestClient) {
@@ -94,6 +110,9 @@ class DeploymentWorkflowE2ETest {
         assertThat(queuedDeployment.containerPort()).isNull();
         assertThat(queuedDeployment.deploymentUrl()).isNull();
 
+        String expectedImageName = "vibeboot-" + project.name() + ":" + queuedDeployment.id();
+        String expectedContainerId = "container-" + queuedDeployment.id();
+
         await()
                 .pollDelay(Duration.ZERO)
                 .pollInterval(Duration.ofMillis(10))
@@ -116,11 +135,11 @@ class DeploymentWorkflowE2ETest {
                     assertThat(deployment.status()).isEqualTo(DeploymentStatus.SUCCESS);
                     assertThat(deployment.startedAt()).isNotNull();
                     assertThat(deployment.finishedAt()).isNotNull();
-                    assertThat(deployment.imageName()).isNull();
-                    assertThat(deployment.containerId()).isNull();
-                    assertThat(deployment.hostPort()).isNull();
-                    assertThat(deployment.containerPort()).isNull();
-                    assertThat(deployment.deploymentUrl()).isNull();
+                    assertThat(deployment.imageName()).isEqualTo(expectedImageName);
+                    assertThat(deployment.containerId()).isEqualTo(expectedContainerId);
+                    assertThat(deployment.hostPort()).isEqualTo(49152);
+                    assertThat(deployment.containerPort()).isEqualTo(8080);
+                    assertThat(deployment.deploymentUrl()).isEqualTo("http://localhost:49152");
                 });
 
         List<DeploymentResponse> deploymentHistory = restTestClient.get()
@@ -148,10 +167,41 @@ class DeploymentWorkflowE2ETest {
                             .extracting(DeploymentLogResponse::message)
                             .containsExactly(
                                     "Deployment started",
-                                    "Fake deployment running",
+                                    "Building Docker image",
+                                    "build ok",
+                                    "Docker image built: " + expectedImageName,
+                                    "Starting Docker container",
+                                    "Docker container started: " + expectedContainerId,
+                                    "Deployment URL: http://localhost:49152",
+                                    "Running health check: http://localhost:49152/health",
+                                    "Health check succeeded after 1 attempt(s)",
                                     "Deployment succeeded"
                             );
                 });
+
+        DeploymentResponse stoppedDeployment = restTestClient.post()
+                .uri("/api/deployments/{deploymentId}/stop", queuedDeployment.id())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(DeploymentResponse.class)
+                .returnResult()
+                .getResponseBody();
+
+        assertThat(stoppedDeployment).isNotNull();
+        assertThat(stoppedDeployment.status()).isEqualTo(DeploymentStatus.STOPPED);
+        assertThat(stoppedDeployment.containerId()).isEqualTo(expectedContainerId);
+        assertThat(stoppedDeployment.deploymentUrl()).isEqualTo("http://localhost:49152");
+        assertThat(stoppedDeployment.finishedAt()).isNotNull();
+
+        verify(dockerService).stopContainer(expectedContainerId);
+
+        List<DeploymentLogResponse> stoppedLogs = getDeploymentLogs(queuedDeployment);
+        assertThat(stoppedLogs)
+                .extracting(DeploymentLogResponse::message)
+                .contains(
+                        "Docker container stopped: " + expectedContainerId,
+                        "Deployment stopped"
+                );
     }
 
     @Test
@@ -179,7 +229,8 @@ class DeploymentWorkflowE2ETest {
                         name,
                         "https://github.com/alexeisoki/" + name,
                         "main",
-                        "./gradlew bootRun"
+                        "./gradlew bootRun",
+                        "/home/alexei/projects/sample-app"
                 ))
                 .exchange()
                 .expectStatus().isCreated()
@@ -190,6 +241,7 @@ class DeploymentWorkflowE2ETest {
         assertThat(project).isNotNull();
         assertThat(project.id()).isNotNull();
         assertThat(project.name()).isEqualTo(name);
+        assertThat(project.localPath()).isEqualTo("/home/alexei/projects/sample-app");
         assertThat(project.dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(project.containerPort()).isEqualTo(8080);
         assertThat(project.healthCheckPath()).isEqualTo("/health");
@@ -230,14 +282,66 @@ class DeploymentWorkflowE2ETest {
         @Primary
         DeploymentExecutor deterministicDeploymentExecutor(
                 DeploymentRepository deploymentRepository,
-                DeploymentLogService deploymentLogService
+                DeploymentLogService deploymentLogService,
+                ProjectService projectService,
+                DockerService dockerService,
+                PortAllocator portAllocator,
+                HealthCheckService healthCheckService
         ) {
             return new DeploymentExecutor(
                     deploymentRepository,
                     deploymentLogService,
-                    () -> true,
-                    Duration.ofMillis(300)
+                    projectService,
+                    dockerService,
+                    portAllocator,
+                    healthCheckService
             );
+        }
+
+        @Bean
+        @Primary
+        DockerService deterministicDockerService() {
+            DockerService dockerService = mock(DockerService.class);
+            when(dockerService.buildImage(any(UUID.class), any(Project.class), any(Path.class)))
+                    .thenAnswer(invocation -> {
+                        UUID deploymentId = invocation.getArgument(0, UUID.class);
+                        Project project = invocation.getArgument(1, Project.class);
+                        return new DockerBuildResult("vibeboot-" + project.getName() + ":" + deploymentId, "build ok");
+                    });
+            when(dockerService.runContainer(any(UUID.class), any(Project.class), anyString(), anyInt()))
+                    .thenAnswer(invocation -> {
+                        UUID deploymentId = invocation.getArgument(0, UUID.class);
+                        int hostPort = invocation.getArgument(3, Integer.class);
+                        return new DockerRunResult(
+                                "container-" + deploymentId,
+                                hostPort,
+                                8080,
+                                "http://localhost:" + hostPort
+                        );
+                    });
+            return dockerService;
+        }
+
+        @Bean
+        @Primary
+        PortAllocator deterministicPortAllocator() {
+            PortAllocator portAllocator = mock(PortAllocator.class);
+            when(portAllocator.allocatePort()).thenReturn(49152);
+            return portAllocator;
+        }
+
+        @Bean
+        @Primary
+        HealthCheckService deterministicHealthCheckService() {
+            HealthCheckService healthCheckService = mock(HealthCheckService.class);
+            when(healthCheckService.waitUntilHealthy(anyString(), anyString()))
+                    .thenReturn(new HealthCheckResult(
+                            true,
+                            URI.create("http://localhost:49152/health"),
+                            1,
+                            "Health check succeeded"
+                    ));
+            return healthCheckService;
         }
 
         @Bean

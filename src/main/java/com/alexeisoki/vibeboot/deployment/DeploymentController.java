@@ -44,9 +44,13 @@ public class DeploymentController {
         return deploymentService.getDeploymentOrThrow(deploymentId);
     }
 
+    @PostMapping("/{deploymentId}/stop")
+    public DeploymentResponse stopDeployment(@PathVariable UUID deploymentId) {
+        return deploymentService.stopDeployment(deploymentId);
+    }
+
     @GetMapping("/{deploymentId}/logs")
     public List<DeploymentLogResponse> getDeploymentLogs(@PathVariable UUID deploymentId) {
         return deploymentLogService.getLogs(deploymentId);
     }
-     
 }

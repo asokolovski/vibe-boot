@@ -37,4 +37,26 @@ class DeploymentTest {
         assertThat(deployment.getContainerPort()).isEqualTo(8080);
         assertThat(deployment.getDeploymentUrl()).isEqualTo("http://localhost:49152");
     }
+
+    @Test
+    void markStopped_setsStoppedStatusWithoutChangingFinishedAt() {
+        Deployment deployment = new Deployment(UUID.randomUUID());
+        deployment.markFinished(DeploymentStatus.SUCCESS);
+        var finishedAt = deployment.getFinishedAt();
+
+        deployment.markStopped();
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.STOPPED);
+        assertThat(deployment.getFinishedAt()).isEqualTo(finishedAt);
+    }
+
+    @Test
+    void markStopped_leavesFinishedAtNullWhenDeploymentWasNotFinished() {
+        Deployment deployment = new Deployment(UUID.randomUUID());
+
+        deployment.markStopped();
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.STOPPED);
+        assertThat(deployment.getFinishedAt()).isNull();
+    }
 }

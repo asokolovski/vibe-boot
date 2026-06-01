@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,8 +24,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 import com.alexeisoki.vibeboot.deployment.queue.DeploymentQueuePublisher;
+import com.alexeisoki.vibeboot.deployment.runtime.DockerService;
 import com.alexeisoki.vibeboot.project.Project;
 import com.alexeisoki.vibeboot.project.ProjectService;
+import com.alexeisoki.vibeboot.shared.ResourceConflictException;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,13 +42,21 @@ class DeploymentServiceTest {
     @Mock
     private DeploymentQueuePublisher deploymentQueuePublisher;
 
+    @Mock
+    private DockerService dockerService;
+
+    @Mock
+    private DeploymentLogService deploymentLogService;
+
     @Test
     void triggerDeployment_verifiesProjectSavesDeploymentAndReturnsResponse() {
         // Arrange
         DeploymentService deploymentService = new DeploymentService(
                 deploymentRepository,
                 projectService,
-                deploymentQueuePublisher
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
         );
         UUID projectId = UUID.randomUUID();
         UUID deploymentId = UUID.randomUUID();
@@ -97,7 +108,9 @@ class DeploymentServiceTest {
         DeploymentService deploymentService = new DeploymentService(
                 deploymentRepository,
                 projectService,
-                deploymentQueuePublisher
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
         );
         UUID deploymentId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -138,7 +151,9 @@ class DeploymentServiceTest {
         DeploymentService deploymentService = new DeploymentService(
                 deploymentRepository,
                 projectService,
-                deploymentQueuePublisher
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
         );
         UUID deploymentId = UUID.randomUUID();
 
@@ -158,7 +173,9 @@ class DeploymentServiceTest {
         DeploymentService deploymentService = new DeploymentService(
                 deploymentRepository,
                 projectService,
-                deploymentQueuePublisher
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
         );
         UUID projectId = UUID.randomUUID();
         UUID firstDeploymentId = UUID.randomUUID();
@@ -208,6 +225,145 @@ class DeploymentServiceTest {
 
         verify(projectService).getProjectOrThrow(projectId);
         verify(deploymentRepository).findByProjectIdOrderByCreatedAtDesc(projectId);
+    }
+
+    @Test
+    void stopDeployment_stopsContainerMarksStoppedWritesLogsAndReturnsResponse() {
+        // Arrange
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
+        );
+        UUID deploymentId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
+        Deployment deployment = deploymentWithGeneratedFields(deploymentId, projectId, createdAt);
+        deployment.recordDockerRuntime(
+                "vibeboot-payment-api:" + deploymentId,
+                "abc123",
+                49152,
+                8080,
+                "http://localhost:49152"
+        );
+        deployment.markFinished(DeploymentStatus.SUCCESS);
+        Instant finishedAt = deployment.getFinishedAt();
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
+        when(deploymentRepository.save(any(Deployment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        DeploymentResponse response = deploymentService.stopDeployment(deploymentId);
+
+        // Assert
+        assertThat(response.id()).isEqualTo(deploymentId);
+        assertThat(response.projectId()).isEqualTo(projectId);
+        assertThat(response.status()).isEqualTo(DeploymentStatus.STOPPED);
+        assertThat(response.createdAt()).isEqualTo(createdAt);
+        assertThat(response.finishedAt()).isEqualTo(finishedAt);
+        assertThat(response.imageName()).isEqualTo("vibeboot-payment-api:" + deploymentId);
+        assertThat(response.containerId()).isEqualTo("abc123");
+        assertThat(response.hostPort()).isEqualTo(49152);
+        assertThat(response.containerPort()).isEqualTo(8080);
+        assertThat(response.deploymentUrl()).isEqualTo("http://localhost:49152");
+
+        InOrder inOrder = inOrder(dockerService, deploymentRepository, deploymentLogService);
+        inOrder.verify(dockerService).stopContainer("abc123");
+        inOrder.verify(deploymentRepository).save(deployment);
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Docker container stopped: abc123");
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Deployment stopped");
+    }
+
+    @Test
+    void stopDeployment_throwsWhenDeploymentIsMissing() {
+        // Arrange
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
+        );
+        UUID deploymentId = UUID.randomUUID();
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.empty());
+
+        // Act + Assert
+        assertThatThrownBy(() -> deploymentService.stopDeployment(deploymentId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Deployment not found");
+
+        verify(dockerService, never()).stopContainer(any());
+        verify(deploymentRepository, never()).save(any(Deployment.class));
+        verify(deploymentLogService, never()).appendLog(any(), any());
+    }
+
+    @Test
+    void stopDeployment_throwsWhenDeploymentHasNoContainer() {
+        // Arrange
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
+        );
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = deploymentWithGeneratedFields(
+                deploymentId,
+                UUID.randomUUID(),
+                Instant.parse("2026-05-15T12:00:00Z")
+        );
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
+
+        // Act + Assert
+        assertThatThrownBy(() -> deploymentService.stopDeployment(deploymentId))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessage("Deployment has no running container to stop");
+
+        verify(dockerService, never()).stopContainer(any());
+        verify(deploymentRepository, never()).save(any(Deployment.class));
+        verify(deploymentLogService, never()).appendLog(any(), any());
+    }
+
+    @Test
+    void stopDeployment_throwsWhenDeploymentIsAlreadyStopped() {
+        // Arrange
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
+        );
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = deploymentWithGeneratedFields(
+                deploymentId,
+                UUID.randomUUID(),
+                Instant.parse("2026-05-15T12:00:00Z")
+        );
+        deployment.recordDockerRuntime(
+                "vibeboot-payment-api:" + deploymentId,
+                "abc123",
+                49152,
+                8080,
+                "http://localhost:49152"
+        );
+        deployment.markStopped();
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
+
+        // Act + Assert
+        assertThatThrownBy(() -> deploymentService.stopDeployment(deploymentId))
+                .isInstanceOf(ResourceConflictException.class)
+                .hasMessage("Deployment is already stopped");
+
+        verify(dockerService, never()).stopContainer(any());
+        verify(deploymentRepository, never()).save(any(Deployment.class));
+        verify(deploymentLogService, never()).appendLog(any(), any());
     }
 
     private static Deployment deploymentWithGeneratedFields(UUID id, UUID projectId, Instant createdAt) {

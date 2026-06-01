@@ -23,6 +23,15 @@ public class ApiExceptionHandler {
                 .body(new ErrorResponse(exception.getMessage()));
     }
 
+    // Used when the row exists, but its current state cannot perform the requested action.
+    // Example: POST /api/deployments/{id}/stop before a container has been started.
+    @ExceptionHandler(ResourceConflictException.class)
+    public ResponseEntity<ErrorResponse> handleResourceConflict(ResourceConflictException exception) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(exception.getMessage()));
+    }
+
     // Used when @Valid fails on a request body.
     // Example: POST /api/projects with a blank name, or POST /api/deployments with projectId set to null.
     @ExceptionHandler(MethodArgumentNotValidException.class)
