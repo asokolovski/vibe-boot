@@ -12,6 +12,86 @@ import java.util.concurrent.TimeUnit;
 
 import org.springframework.stereotype.Service;
 
+/*
+ * Process execution model:
+ *
+ * This class runs external Docker CLI commands from inside our Spring Boot app.
+ * The caller is usually a RabbitMQ listener thread:
+ *
+ *   Rabbit listener thread
+ *     -> DeploymentExecutor
+ *     -> DockerService
+ *     -> DockerCommandRunner
+ *     -> ProcessBuilder.start()
+ *
+ * processBuilder.start() asks the OS to start a separate child process, such as:
+ *
+ *   docker build ...
+ *   docker run ...
+ *   docker stop ...
+ *
+ * That Docker command is NOT running inside the Rabbit listener thread. It is a
+ * separate OS process. The Rabbit listener thread is only responsible for
+ * starting it, waiting for it to finish, enforcing a timeout, and collecting
+ * the result.
+ *
+ * The child process has stdout and stderr streams. In a normal terminal, those
+ * streams would print directly to the terminal. With ProcessBuilder, Java gives
+ * us pipes instead:
+ *
+ *   child stdout -> process.getInputStream()
+ *   child stderr -> process.getErrorStream()
+ *
+ * These pipes have limited buffer space. If the Docker process writes a lot of
+ * output and our Java process does not read it, the pipe can fill up. Once a
+ * pipe fills up, the Docker process can block while trying to write more output.
+ * If that happens while the Rabbit listener thread is waiting for the process
+ * to finish, the whole command can appear to hang.
+ *
+ * That is why we start two async reader tasks immediately after starting the
+ * process:
+ *
+ *   one task drains stdout
+ *   one task drains stderr
+ *
+ * These tasks are Java threads inside the same Spring Boot JVM, not separate OS
+ * child processes. CompletableFuture.supplyAsync(...) uses Java's default
+ * ForkJoinPool.commonPool() unless we provide a custom Executor.
+ *
+ * So during command execution we have:
+ *
+ *   Rabbit listener thread:
+ *     starts the Docker child process
+ *     starts stdout/stderr reader tasks
+ *     waits for process completion or timeout
+ *
+ *   async stdout reader:
+ *     blocks on stdout.readAllBytes()
+ *     keeps stdout drained until the process exits and closes the stream
+ *
+ *   async stderr reader:
+ *     blocks on stderr.readAllBytes()
+ *     keeps stderr drained until the process exits and closes the stream
+ *
+ *   Docker child process:
+ *     performs the actual Docker work
+ *     writes normal output to stdout
+ *     writes errors/warnings to stderr
+ *
+ * We read stdout and stderr concurrently so neither pipe can fill up while the
+ * process is running. After the process exits, the streams close, the async
+ * readers complete, and we can collect the final stdout/stderr strings along
+ * with the exit code.
+ *
+ * Important distinction:
+ *
+ *   ProcessBuilder.start() creates a separate OS process.
+ *   CompletableFuture.supplyAsync(...) creates Java tasks/threads inside our JVM.
+ *
+ * The Docker process does the external work. The async Java tasks only drain
+ * its output pipes so the Docker process can finish safely.
+ */
+
 @Service
 public class DockerCommandRunner {
 
