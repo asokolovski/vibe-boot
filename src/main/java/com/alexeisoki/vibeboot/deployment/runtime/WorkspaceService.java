@@ -10,6 +10,13 @@ import java.util.stream.Stream;
 
 import org.springframework.stereotype.Service;
 
+/*
+ * A deployment workspace is a temporary local workbench for one deployment.
+ * Git clones the project's repository into it, giving Docker real files and a
+ * directory from which it can run `docker build .`. Once the Docker image has
+ * been created, the cloned source is no longer needed and the entire workspace
+ * can be deleted.
+ */
 @Service
 public class WorkspaceService {
     private static final String WORKSPACE_DIRECTORY_NAME = "vibeboot-workspaces";
