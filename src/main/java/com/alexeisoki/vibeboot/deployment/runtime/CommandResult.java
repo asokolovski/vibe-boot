@@ -1,6 +1,6 @@
 package com.alexeisoki.vibeboot.deployment.runtime;
 
-public record DockerCommandResult(
+public record CommandResult(
         int exitCode,
         String stdout,
         String stderr,

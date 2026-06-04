@@ -10,13 +10,13 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class DockerCommandRunnerTest {
+class CommandRunnerTest {
 
-    private final DockerCommandRunner dockerCommandRunner = new DockerCommandRunner();
+    private final CommandRunner commandRunner = new CommandRunner();
 
     @Test
     void run_capturesStdoutStderrAndExitCode() {
-        DockerCommandResult result = dockerCommandRunner.run(
+        CommandResult result = commandRunner.run(
                 List.of("sh", "-c", "printf 'hello'; printf 'problem' >&2; exit 7"),
                 Duration.ofSeconds(1)
         );
@@ -30,7 +30,7 @@ class DockerCommandRunnerTest {
 
     @Test
     void run_marksSuccessfulZeroExitCommandAsSucceeded() {
-        DockerCommandResult result = dockerCommandRunner.run(
+        CommandResult result = commandRunner.run(
                 List.of("sh", "-c", "printf 'ok'"),
                 Duration.ofSeconds(1)
         );
@@ -44,7 +44,7 @@ class DockerCommandRunnerTest {
 
     @Test
     void run_usesWorkingDirectoryWhenProvided(@TempDir Path tempDirectory) {
-        DockerCommandResult result = dockerCommandRunner.run(
+        CommandResult result = commandRunner.run(
                 List.of("sh", "-c", "pwd"),
                 tempDirectory,
                 Duration.ofSeconds(1)
@@ -56,7 +56,7 @@ class DockerCommandRunnerTest {
 
     @Test
     void run_timesOutLongRunningCommand() {
-        DockerCommandResult result = dockerCommandRunner.run(
+        CommandResult result = commandRunner.run(
                 List.of("sh", "-c", "sleep 2"),
                 Duration.ofMillis(100)
         );
@@ -67,7 +67,7 @@ class DockerCommandRunnerTest {
 
     @Test
     void run_returnsStructuredFailureWhenCommandCannotStart() {
-        DockerCommandResult result = dockerCommandRunner.run(
+        CommandResult result = commandRunner.run(
                 List.of("definitely-not-a-real-command-vibeboot"),
                 Duration.ofSeconds(1)
         );
@@ -81,14 +81,14 @@ class DockerCommandRunnerTest {
 
     @Test
     void run_rejectsEmptyCommand() {
-        assertThatThrownBy(() -> dockerCommandRunner.run(List.of(), Duration.ofSeconds(1)))
+        assertThatThrownBy(() -> commandRunner.run(List.of(), Duration.ofSeconds(1)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("command must not be empty");
     }
 
     @Test
     void run_rejectsMissingTimeout() {
-        assertThatThrownBy(() -> dockerCommandRunner.run(List.of("sh", "-c", "printf ok"), null))
+        assertThatThrownBy(() -> commandRunner.run(List.of("sh", "-c", "printf ok"), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("timeout must be positive");
     }

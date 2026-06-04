@@ -15,13 +15,13 @@ import org.springframework.stereotype.Service;
 /*
  * Process execution model:
  *
- * This class runs external Docker CLI commands from inside our Spring Boot app.
+ * This class runs external CLI commands from inside our Spring Boot app.
  * The caller is usually a RabbitMQ listener thread:
  *
  *   Rabbit listener thread
  *     -> DeploymentExecutor
- *     -> DockerService
- *     -> DockerCommandRunner
+ *     -> DockerService or GitService
+ *     -> CommandRunner
  *     -> ProcessBuilder.start()
  *
  * processBuilder.start() asks the OS to start a separate child process, such as:
@@ -30,7 +30,7 @@ import org.springframework.stereotype.Service;
  *   docker run ...
  *   docker stop ...
  *
- * That Docker command is NOT running inside the Rabbit listener thread. It is a
+ * That external command is NOT running inside the Rabbit listener thread. It is a
  * separate OS process. The Rabbit listener thread is only responsible for
  * starting it, waiting for it to finish, enforcing a timeout, and collecting
  * the result.
@@ -42,9 +42,9 @@ import org.springframework.stereotype.Service;
  *   child stdout -> process.getInputStream()
  *   child stderr -> process.getErrorStream()
  *
- * These pipes have limited buffer space. If the Docker process writes a lot of
+ * These pipes have limited buffer space. If the child process writes a lot of
  * output and our Java process does not read it, the pipe can fill up. Once a
- * pipe fills up, the Docker process can block while trying to write more output.
+ * pipe fills up, the external process can block while trying to write more output.
  * If that happens while the Rabbit listener thread is waiting for the process
  * to finish, the whole command can appear to hang.
  *
@@ -61,7 +61,7 @@ import org.springframework.stereotype.Service;
  * So during command execution we have:
  *
  *   Rabbit listener thread:
- *     starts the Docker child process
+ *     starts the external child process
  *     starts stdout/stderr reader tasks
  *     waits for process completion or timeout
  *
@@ -73,8 +73,8 @@ import org.springframework.stereotype.Service;
  *     blocks on stderr.readAllBytes()
  *     keeps stderr drained until the process exits and closes the stream
  *
- *   Docker child process:
- *     performs the actual Docker work
+ *   external child process:
+ *     performs the actual external work
  *     writes normal output to stdout
  *     writes errors/warnings to stderr
  *
@@ -88,20 +88,20 @@ import org.springframework.stereotype.Service;
  *   ProcessBuilder.start() creates a separate OS process.
  *   CompletableFuture.supplyAsync(...) creates Java tasks/threads inside our JVM.
  *
- * The Docker process does the external work. The async Java tasks only drain
- * its output pipes so the Docker process can finish safely.
+ * The child process does the external work. The async Java tasks only drain
+ * its output pipes so the child process can finish safely.
  */
 
 @Service
-public class DockerCommandRunner {
+public class CommandRunner {
 
     private static final int COMMAND_START_FAILED_EXIT_CODE = -1;
 
-    public DockerCommandResult run(List<String> command, Duration timeout) {
+    public CommandResult run(List<String> command, Duration timeout) {
         return run(command, null, timeout);
     }
 
-    public DockerCommandResult run(List<String> command, Path workingDirectory, Duration timeout) {
+    public CommandResult run(List<String> command, Path workingDirectory, Duration timeout) {
         validate(command, timeout);
 
         ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -124,7 +124,7 @@ public class DockerCommandRunner {
             if (!finished) {
                 process.destroyForcibly();
                 process.waitFor();
-                return new DockerCommandResult(
+                return new CommandResult(
                         process.exitValue(),
                         readOutput(stdout),
                         readOutput(stderr),
@@ -132,7 +132,7 @@ public class DockerCommandRunner {
                 );
             }
 
-            return new DockerCommandResult(
+            return new CommandResult(
                     process.exitValue(),
                     readOutput(stdout),
                     readOutput(stderr),
@@ -141,7 +141,7 @@ public class DockerCommandRunner {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             process.destroyForcibly();
-            return new DockerCommandResult(
+            return new CommandResult(
                     COMMAND_START_FAILED_EXIT_CODE,
                     readOutput(stdout),
                     readOutput(stderr) + exception.getMessage(),
@@ -160,8 +160,8 @@ public class DockerCommandRunner {
         }
     }
 
-    private DockerCommandResult commandStartFailed(IOException exception) {
-        return new DockerCommandResult(
+    private CommandResult commandStartFailed(IOException exception) {
+        return new CommandResult(
                 COMMAND_START_FAILED_EXIT_CODE,
                 "",
                 exception.getMessage(),

@@ -33,10 +33,7 @@ class ProjectServiceTest {
         ProjectService projectService = new ProjectService(projectRepository);
         CreateProjectRequest request = new CreateProjectRequest(
                 "Vibe Boot",
-                "https://github.com/alexeisoki/vibe-boot",
-                "main",
-                "./gradlew bootRun",
-                "/home/alexei/projects/sample-app"
+                "https://github.com/alexeisoki/vibe-boot"
         );
         UUID generatedId = UUID.randomUUID();
         Instant generatedCreatedAt = Instant.parse("2026-05-14T12:00:00Z");
@@ -44,9 +41,9 @@ class ProjectServiceTest {
                 generatedId,
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
-                "main",
-                "./gradlew bootRun",
-                "/home/alexei/projects/sample-app",
+                null,
+                null,
+                null,
                 generatedCreatedAt
         );
 
@@ -60,8 +57,8 @@ class ProjectServiceTest {
         assertThat(response.name()).isEqualTo("Vibe Boot");
         assertThat(response.repositoryUrl()).isEqualTo("https://github.com/alexeisoki/vibe-boot");
         assertThat(response.branch()).isEqualTo("main");
-        assertThat(response.runCommand()).isEqualTo("./gradlew bootRun");
-        assertThat(response.localPath()).isEqualTo("/home/alexei/projects/sample-app");
+        assertThat(response.runCommand()).isNull();
+        assertThat(response.localPath()).isNull();
         assertThat(response.dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(response.containerPort()).isEqualTo(8080);
         assertThat(response.healthCheckPath()).isEqualTo("/health");

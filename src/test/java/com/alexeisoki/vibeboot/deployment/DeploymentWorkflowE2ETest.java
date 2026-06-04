@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -14,6 +16,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -36,11 +39,16 @@ import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerBuildResult;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerRunResult;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerService;
+import com.alexeisoki.vibeboot.deployment.runtime.GitCloneResult;
+import com.alexeisoki.vibeboot.deployment.runtime.GitService;
 import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckResult;
 import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckService;
 import com.alexeisoki.vibeboot.deployment.runtime.PortAllocator;
+import com.alexeisoki.vibeboot.deployment.runtime.WorkspaceService;
 import com.alexeisoki.vibeboot.project.Project;
+import com.alexeisoki.vibeboot.project.ProjectEnvironmentVariableService;
 import com.alexeisoki.vibeboot.project.ProjectService;
+import com.alexeisoki.vibeboot.project.dto.AddProjectEnvironmentVariableRequest;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
 
@@ -74,6 +82,7 @@ class DeploymentWorkflowE2ETest {
     @Test
     void deploymentWorkflow_runsEndToEndOverHttp() {
         ProjectResponse project = createProject("vibe-payment-api");
+        addEnvVar(project.id());
 
         List<ProjectResponse> projects = restTestClient.get()
                 .uri("/api/projects")
@@ -142,6 +151,14 @@ class DeploymentWorkflowE2ETest {
                     assertThat(deployment.deploymentUrl()).isEqualTo("http://localhost:49152");
                 });
 
+        verify(dockerService).runContainer(
+                eq(queuedDeployment.id()),
+                any(Project.class),
+                eq(expectedImageName),
+                eq(49152),
+                eq(Map.of("API_KEY", "secret"))
+        );
+
         List<DeploymentResponse> deploymentHistory = restTestClient.get()
                 .uri("/api/projects/{projectId}/deployments", project.id())
                 .exchange()
@@ -167,15 +184,22 @@ class DeploymentWorkflowE2ETest {
                             .extracting(DeploymentLogResponse::message)
                             .containsExactly(
                                     "Deployment started",
+                                    "Created workspace",
+                                    "Cloning repository",
+                                    "clone ok",
+                                    "Repository cloned successfully",
                                     "Building Docker image",
                                     "build ok",
                                     "Docker image built: " + expectedImageName,
+                                    "Loading project environment variables",
+                                    "Loaded 1 project environment variable(s)",
                                     "Starting Docker container",
                                     "Docker container started: " + expectedContainerId,
                                     "Deployment URL: http://localhost:49152",
                                     "Running health check: http://localhost:49152/health",
                                     "Health check succeeded after 1 attempt(s)",
-                                    "Deployment succeeded"
+                                    "Deployment succeeded",
+                                    "Workspace cleaned up"
                             );
                 });
 
@@ -225,13 +249,7 @@ class DeploymentWorkflowE2ETest {
         ProjectResponse project = restTestClient.post()
                 .uri("/api/projects")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new CreateProjectRequest(
-                        name,
-                        "https://github.com/alexeisoki/" + name,
-                        "main",
-                        "./gradlew bootRun",
-                        "/home/alexei/projects/sample-app"
-                ))
+                .body(new CreateProjectRequest(name, "https://github.com/alexeisoki/" + name))
                 .exchange()
                 .expectStatus().isCreated()
                 .expectBody(ProjectResponse.class)
@@ -241,12 +259,22 @@ class DeploymentWorkflowE2ETest {
         assertThat(project).isNotNull();
         assertThat(project.id()).isNotNull();
         assertThat(project.name()).isEqualTo(name);
-        assertThat(project.localPath()).isEqualTo("/home/alexei/projects/sample-app");
+        assertThat(project.localPath()).isNull();
+        assertThat(project.branch()).isEqualTo("main");
         assertThat(project.dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(project.containerPort()).isEqualTo(8080);
         assertThat(project.healthCheckPath()).isEqualTo("/health");
         assertThat(project.createdAt()).isNotNull();
         return project;
+    }
+
+    private void addEnvVar(UUID projectId) {
+        restTestClient.post()
+                .uri("/api/projects/{projectId}/env", projectId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new AddProjectEnvironmentVariableRequest("API_KEY", "secret"))
+                .exchange()
+                .expectStatus().isCreated();
     }
 
     private DeploymentResponse getDeployment(DeploymentResponse deployment) {
@@ -286,7 +314,10 @@ class DeploymentWorkflowE2ETest {
                 ProjectService projectService,
                 DockerService dockerService,
                 PortAllocator portAllocator,
-                HealthCheckService healthCheckService
+                HealthCheckService healthCheckService,
+                WorkspaceService workspaceService,
+                GitService gitService,
+                ProjectEnvironmentVariableService environmentVariableService
         ) {
             return new DeploymentExecutor(
                     deploymentRepository,
@@ -294,8 +325,29 @@ class DeploymentWorkflowE2ETest {
                     projectService,
                     dockerService,
                     portAllocator,
-                    healthCheckService
+                    healthCheckService,
+                    workspaceService,
+                    gitService,
+                    environmentVariableService
             );
+        }
+
+        @Bean
+        @Primary
+        WorkspaceService deterministicWorkspaceService() {
+            WorkspaceService workspaceService = mock(WorkspaceService.class);
+            when(workspaceService.createWorkspace(any(UUID.class)))
+                    .thenReturn(Path.of("/tmp/vibeboot-e2e-workspace"));
+            return workspaceService;
+        }
+
+        @Bean
+        @Primary
+        GitService deterministicGitService() {
+            GitService gitService = mock(GitService.class);
+            when(gitService.cloneRepository(anyString(), anyString(), any(Path.class)))
+                    .thenReturn(new GitCloneResult("clone ok"));
+            return gitService;
         }
 
         @Bean
@@ -308,7 +360,7 @@ class DeploymentWorkflowE2ETest {
                         Project project = invocation.getArgument(1, Project.class);
                         return new DockerBuildResult("vibeboot-" + project.getName() + ":" + deploymentId, "build ok");
                     });
-            when(dockerService.runContainer(any(UUID.class), any(Project.class), anyString(), anyInt()))
+            when(dockerService.runContainer(any(UUID.class), any(Project.class), anyString(), anyInt(), anyMap()))
                     .thenAnswer(invocation -> {
                         UUID deploymentId = invocation.getArgument(0, UUID.class);
                         int hostPort = invocation.getArgument(3, Integer.class);

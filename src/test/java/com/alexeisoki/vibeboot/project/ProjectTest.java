@@ -11,10 +11,11 @@ class ProjectTest {
         Project project = new Project(
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
-                "main",
+                null,
                 "./gradlew bootRun"
         );
 
+        assertThat(project.getBranch()).isEqualTo("main");
         assertThat(project.getDockerfilePath()).isEqualTo("Dockerfile");
         assertThat(project.getContainerPort()).isEqualTo(8080);
         assertThat(project.getHealthCheckPath()).isEqualTo("/health");

@@ -17,6 +17,7 @@ import jakarta.validation.constraints.NotBlank;
 // @Table controls the actual table name instead of relying on the default class name.
 @Table(name = "projects")
 public class Project {
+    public static final String DEFAULT_BRANCH = "main";
     public static final String DEFAULT_DOCKERFILE_PATH = "Dockerfile";
     public static final int DEFAULT_CONTAINER_PORT = 8080;
     public static final String DEFAULT_HEALTH_CHECK_PATH = "/health";
@@ -90,7 +91,7 @@ public class Project {
     ) {
         this.name = name;
         this.repositoryUrl = repositoryUrl;
-        this.branch = branch;
+        this.branch = defaultIfBlank(branch, DEFAULT_BRANCH);
         this.runCommand = nullIfBlank(runCommand);
         this.localPath = nullIfBlank(localPath);
         this.dockerfilePath = defaultIfBlank(dockerfilePath, DEFAULT_DOCKERFILE_PATH);
@@ -119,7 +120,7 @@ public class Project {
     }
 
     public String getBranch() {
-        return branch;
+        return defaultIfBlank(branch, DEFAULT_BRANCH);
     }
 
     public String getRunCommand() {

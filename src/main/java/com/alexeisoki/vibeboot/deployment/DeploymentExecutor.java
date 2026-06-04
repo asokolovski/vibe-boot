@@ -1,8 +1,8 @@
 package com.alexeisoki.vibeboot.deployment;
 
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Component;
@@ -11,10 +11,15 @@ import com.alexeisoki.vibeboot.deployment.runtime.DockerBuildResult;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerRunResult;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerService;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerServiceException;
+import com.alexeisoki.vibeboot.deployment.runtime.GitCloneResult;
+import com.alexeisoki.vibeboot.deployment.runtime.GitService;
+import com.alexeisoki.vibeboot.deployment.runtime.GitServiceException;
 import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckResult;
 import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckService;
 import com.alexeisoki.vibeboot.deployment.runtime.PortAllocator;
+import com.alexeisoki.vibeboot.deployment.runtime.WorkspaceService;
 import com.alexeisoki.vibeboot.project.Project;
+import com.alexeisoki.vibeboot.project.ProjectEnvironmentVariableService;
 import com.alexeisoki.vibeboot.project.ProjectService;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
@@ -28,6 +33,9 @@ public class DeploymentExecutor {
     private final DockerService dockerService;
     private final PortAllocator portAllocator;
     private final HealthCheckService healthCheckService;
+    private final WorkspaceService workspaceService;
+    private final GitService gitService;
+    private final ProjectEnvironmentVariableService environmentVariableService;
 
     public DeploymentExecutor(
             DeploymentRepository deploymentRepository,
@@ -35,7 +43,10 @@ public class DeploymentExecutor {
             ProjectService projectService,
             DockerService dockerService,
             PortAllocator portAllocator,
-            HealthCheckService healthCheckService
+            HealthCheckService healthCheckService,
+            WorkspaceService workspaceService,
+            GitService gitService,
+            ProjectEnvironmentVariableService environmentVariableService
     ) {
         this.deploymentRepository = deploymentRepository;
         this.deploymentLogService = deploymentLogService;
@@ -43,6 +54,9 @@ public class DeploymentExecutor {
         this.dockerService = dockerService;
         this.portAllocator = portAllocator;
         this.healthCheckService = healthCheckService;
+        this.workspaceService = workspaceService;
+        this.gitService = gitService;
+        this.environmentVariableService = environmentVariableService;
     }
 
     public void execute(UUID deploymentId) {
@@ -68,46 +82,83 @@ public class DeploymentExecutor {
         deployment.markRunning(startedAt);
         deploymentLogService.appendLog(deploymentId, "Deployment started");
 
-        Project project = projectService.getProjectOrThrow(deployment.getProjectId());
+        Path workspace = null;
         try {
-            buildDockerImage(deploymentId, deployment, project);
-            runDockerContainer(deploymentId, deployment, project);
-        } catch (DockerServiceException exception) {
-            appendDockerOutput(deploymentId, exception.commandOutput());
-            deployment.markFinished(DeploymentStatus.FAILED);
-            deploymentRepository.save(deployment);
-            deploymentLogService.appendLog(deploymentId, exception.getMessage());
-            deploymentLogService.appendLog(deploymentId, "Deployment failed");
-            return;
+            Project project = projectService.getProjectOrThrow(deployment.getProjectId());
+            workspace = createWorkspace(deploymentId);
+            Path sourceDirectory = workspace.resolve("source");
+            cloneRepository(deploymentId, project, sourceDirectory);
+            buildDockerImage(deploymentId, deployment, project, sourceDirectory);
+            int hostPort = allocateHostPort();
+            Map<String, String> environmentVariables =
+                    loadEnvironmentVariables(deploymentId, deployment.getProjectId());
+            runDockerContainer(deploymentId, deployment, project, hostPort, environmentVariables);
+            finishAfterHealthCheck(deploymentId, deployment, project);
+        } catch (RuntimeException exception) {
+            failDeployment(deploymentId, deployment, exception);
+        } finally {
+            cleanupWorkspace(deploymentId, workspace);
         }
-
-        finishAfterHealthCheck(deploymentId, deployment, project);
     }
 
-    private void buildDockerImage(UUID deploymentId, Deployment deployment, Project project) {
+    private Path createWorkspace(UUID deploymentId) {
+        Path workspace = workspaceService.createWorkspace(deploymentId);
+        deploymentLogService.appendLog(deploymentId, "Created workspace");
+        return workspace;
+    }
+
+    private void cloneRepository(UUID deploymentId, Project project, Path sourceDirectory) {
+        deploymentLogService.appendLog(deploymentId, "Cloning repository");
+        GitCloneResult cloneResult = gitService.cloneRepository(
+                project.getRepositoryUrl(),
+                project.getBranch(),
+                sourceDirectory
+        );
+        appendCommandOutput(deploymentId, cloneResult.output());
+        deploymentLogService.appendLog(deploymentId, "Repository cloned successfully");
+    }
+
+    private void buildDockerImage(UUID deploymentId, Deployment deployment, Project project, Path sourceDirectory) {
         deploymentLogService.appendLog(deploymentId, "Building Docker image");
 
         DockerBuildResult buildResult = dockerService.buildImage(
                 deploymentId,
                 project,
-                projectDirectory(project)
+                sourceDirectory
         );
-        appendDockerOutput(deploymentId, buildResult.output());
+        appendCommandOutput(deploymentId, buildResult.output());
 
         deployment.recordDockerImage(buildResult.imageName());
         deploymentRepository.save(deployment);
         deploymentLogService.appendLog(deploymentId, "Docker image built: " + buildResult.imageName());
     }
 
-    private void runDockerContainer(UUID deploymentId, Deployment deployment, Project project) {
+    private Map<String, String> loadEnvironmentVariables(UUID deploymentId, UUID projectId) {
+        deploymentLogService.appendLog(deploymentId, "Loading project environment variables");
+        Map<String, String> environmentVariables =
+                environmentVariableService.getDecryptedEnvVarsForProject(projectId);
+        deploymentLogService.appendLog(
+                deploymentId,
+                "Loaded " + environmentVariables.size() + " project environment variable(s)"
+        );
+        return environmentVariables;
+    }
+
+    private void runDockerContainer(
+            UUID deploymentId,
+            Deployment deployment,
+            Project project,
+            int hostPort,
+            Map<String, String> environmentVariables
+    ) {
         deploymentLogService.appendLog(deploymentId, "Starting Docker container");
 
-        int hostPort = allocateHostPort();
         DockerRunResult runResult = dockerService.runContainer(
                 deploymentId,
                 project,
                 deployment.getImageName(),
-                hostPort
+                hostPort,
+                environmentVariables
         );
 
         deployment.recordDockerRuntime(
@@ -154,6 +205,35 @@ public class DeploymentExecutor {
         deploymentLogService.appendLog(deploymentId, "Deployment failed");
     }
 
+    private void failDeployment(UUID deploymentId, Deployment deployment, RuntimeException exception) {
+        appendFailureOutput(deploymentId, exception);
+
+        if (deployment.getContainerId() != null && !deployment.getContainerId().isBlank()) {
+            cleanupUnhealthyContainer(deploymentId, deployment);
+        }
+
+        deployment.markFinished(DeploymentStatus.FAILED);
+        deploymentRepository.save(deployment);
+        deploymentLogService.appendLog(deploymentId, failureMessage(exception));
+        deploymentLogService.appendLog(deploymentId, "Deployment failed");
+    }
+
+    private void cleanupWorkspace(UUID deploymentId, Path workspace) {
+        if (workspace == null) {
+            return;
+        }
+
+        try {
+            workspaceService.cleanupWorkspace(workspace);
+            deploymentLogService.appendLog(deploymentId, "Workspace cleaned up");
+        } catch (RuntimeException exception) {
+            deploymentLogService.appendLog(
+                    deploymentId,
+                    "Could not clean up workspace: " + failureMessage(exception)
+            );
+        }
+    }
+
     private void cleanupUnhealthyContainer(UUID deploymentId, Deployment deployment) {
         String containerId = deployment.getContainerId();
         if (containerId == null || containerId.isBlank()) {
@@ -162,9 +242,9 @@ public class DeploymentExecutor {
 
         deploymentLogService.appendLog(deploymentId, "Collecting unhealthy container logs");
         try {
-            appendDockerOutput(deploymentId, dockerService.getContainerLogs(containerId));
+            appendCommandOutput(deploymentId, dockerService.getContainerLogs(containerId));
         } catch (DockerServiceException exception) {
-            appendDockerOutput(deploymentId, exception.commandOutput());
+            appendCommandOutput(deploymentId, exception.commandOutput());
             deploymentLogService.appendLog(
                     deploymentId,
                     "Could not collect unhealthy container logs: " + exception.getMessage()
@@ -176,7 +256,7 @@ public class DeploymentExecutor {
             dockerService.stopContainer(containerId);
             deploymentLogService.appendLog(deploymentId, "Unhealthy container stopped: " + containerId);
         } catch (DockerServiceException exception) {
-            appendDockerOutput(deploymentId, exception.commandOutput());
+            appendCommandOutput(deploymentId, exception.commandOutput());
             deploymentLogService.appendLog(
                     deploymentId,
                     "Could not stop unhealthy container: " + exception.getMessage()
@@ -192,20 +272,23 @@ public class DeploymentExecutor {
         }
     }
 
-    private Path projectDirectory(Project project) {
-        String localPath = project.getLocalPath();
-        if (localPath == null || localPath.isBlank()) {
-            throw new DockerServiceException("Project localPath is required for Docker build");
+    private void appendFailureOutput(UUID deploymentId, RuntimeException exception) {
+        if (exception instanceof DockerServiceException dockerServiceException) {
+            appendCommandOutput(deploymentId, dockerServiceException.commandOutput());
         }
 
-        try {
-            return Path.of(localPath);
-        } catch (InvalidPathException exception) {
-            throw new DockerServiceException("Project localPath is invalid: " + localPath);
+        if (exception instanceof GitServiceException gitServiceException) {
+            appendCommandOutput(deploymentId, gitServiceException.commandOutput());
         }
     }
 
-    private void appendDockerOutput(UUID deploymentId, String output) {
+    private String failureMessage(RuntimeException exception) {
+        return exception.getMessage() == null || exception.getMessage().isBlank()
+                ? exception.getClass().getSimpleName()
+                : exception.getMessage();
+    }
+
+    private void appendCommandOutput(UUID deploymentId, String output) {
         if (output == null || output.isBlank()) {
             return;
         }

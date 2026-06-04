@@ -2,9 +2,12 @@ package com.alexeisoki.vibeboot.deployment.runtime;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 
@@ -17,11 +20,12 @@ public class DockerService {
     private static final Duration RUN_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration LOGS_TIMEOUT = Duration.ofSeconds(30);
+    private static final Pattern ENV_VAR_KEY_PATTERN = Pattern.compile("[A-Z_][A-Z0-9_]*");
 
-    private final DockerCommandRunner dockerCommandRunner;
+    private final CommandRunner commandRunner;
 
-    public DockerService(DockerCommandRunner dockerCommandRunner) {
-        this.dockerCommandRunner = dockerCommandRunner;
+    public DockerService(CommandRunner commandRunner) {
+        this.commandRunner = commandRunner;
     }
 
     public DockerBuildResult buildImage(UUID deploymentId, Project project, Path projectDirectory) {
@@ -32,7 +36,7 @@ public class DockerService {
         }
 
         String imageName = toImageName(deploymentId, project);
-        DockerCommandResult result = dockerCommandRunner.run(
+        CommandResult result = commandRunner.run(
                 List.of(
                         "docker",
                         "build",
@@ -50,26 +54,31 @@ public class DockerService {
         return new DockerBuildResult(imageName, combineOutput(result.stdout(), result.stderr()));
     }
 
-    public DockerRunResult runContainer(UUID deploymentId, Project project, String imageName, int hostPort) {
+    public DockerRunResult runContainer(
+            UUID deploymentId,
+            Project project,
+            String imageName,
+            int hostPort,
+            Map<String, String> environmentVariables
+    ) {
         validateDeploymentId(deploymentId);
         validateProject(project);
         validateText(imageName, "imageName");
         if (hostPort <= 0) {
             throw new IllegalArgumentException("hostPort must be positive");
         }
+        validateEnvironmentVariables(environmentVariables);
 
         int containerPort = project.getContainerPort();
-        DockerCommandResult result = dockerCommandRunner.run(
-                List.of(
-                        "docker",
-                        "run",
-                        "-d",
-                        "--name",
-                        toContainerName(deploymentId),
-                        "-p",
-                        hostPort + ":" + containerPort,
-                        imageName
-                ),
+        List<String> command = dockerRunCommand(
+                deploymentId,
+                imageName,
+                hostPort,
+                containerPort,
+                environmentVariables
+        );
+        CommandResult result = commandRunner.run(
+                command,
                 RUN_TIMEOUT
         );
 
@@ -88,10 +97,39 @@ public class DockerService {
         );
     }
 
+    private List<String> dockerRunCommand(
+            UUID deploymentId,
+            String imageName,
+            int hostPort,
+            int containerPort,
+            Map<String, String> environmentVariables
+    ) {
+        List<String> command = new ArrayList<>(List.of(
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                toContainerName(deploymentId),
+                "-p",
+                hostPort + ":" + containerPort
+        ));
+
+        environmentVariables.entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> {
+                    command.add("-e");
+                    command.add(entry.getKey() + "=" + entry.getValue());
+                });
+
+        command.add(imageName);
+        return command;
+    }
+
     public void stopContainer(String containerId) {
         validateText(containerId, "containerId");
 
-        DockerCommandResult result = dockerCommandRunner.run(
+        CommandResult result = commandRunner.run(
                 List.of("docker", "stop", containerId),
                 STOP_TIMEOUT
         );
@@ -102,7 +140,7 @@ public class DockerService {
     public String getContainerLogs(String containerId) {
         validateText(containerId, "containerId");
 
-        DockerCommandResult result = dockerCommandRunner.run(
+        CommandResult result = commandRunner.run(
                 List.of("docker", "logs", containerId),
                 LOGS_TIMEOUT
         );
@@ -127,7 +165,7 @@ public class DockerService {
         return safeValue.isBlank() ? "project" : safeValue;
     }
 
-    private void requireSuccess(DockerCommandResult result, String failureMessage) {
+    private void requireSuccess(CommandResult result, String failureMessage) {
         if (result.succeeded()) {
             return;
         }
@@ -138,7 +176,7 @@ public class DockerService {
         );
     }
 
-    private String failureReason(DockerCommandResult result) {
+    private String failureReason(CommandResult result) {
         if (result.timedOut()) {
             return "command timed out";
         }
@@ -182,6 +220,22 @@ public class DockerService {
     private void validateText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+    }
+
+    private void validateEnvironmentVariables(Map<String, String> environmentVariables) {
+        if (environmentVariables == null) {
+            throw new IllegalArgumentException("environmentVariables must not be null");
+        }
+
+        for (Map.Entry<String, String> entry : environmentVariables.entrySet()) {
+            if (entry.getKey() == null || !ENV_VAR_KEY_PATTERN.matcher(entry.getKey()).matches()) {
+                throw new IllegalArgumentException("environment variable key must match [A-Z_][A-Z0-9_]*");
+            }
+
+            if (entry.getValue() == null) {
+                throw new IllegalArgumentException("environment variable value must not be null");
+            }
         }
     }
 }

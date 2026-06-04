@@ -32,6 +32,13 @@ public class ApiExceptionHandler {
                 .body(new ErrorResponse(exception.getMessage()));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(exception.getMessage()));
+    }
+
     // Used when @Valid fails on a request body.
     // Example: POST /api/projects with a blank name, or POST /api/deployments with projectId set to null.
     @ExceptionHandler(MethodArgumentNotValidException.class)
