@@ -18,7 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class GitServiceTest {
-    private static final String REPOSITORY_URL = "https://github.com/alexeisoko/sample-app";
+    private static final String REPOSITORY_URL = "https://github.com/alexeisoko/example-app";
 
     @Mock
     private CommandRunner commandRunner;
@@ -96,7 +96,7 @@ class GitServiceTest {
         GitService gitService = new GitService(commandRunner);
 
         assertThatThrownBy(() -> gitService.cloneRepository(
-                "git@github.com:alexeisoko/sample-app.git",
+                "git@github.com:alexeisoko/example-app.git",
                 "main",
                 targetDirectory
         ))

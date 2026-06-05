@@ -8,8 +8,6 @@ public record ProjectResponse(
         String name,
         String repositoryUrl,
         String branch,
-        String runCommand,
-        String localPath,
         String dockerfilePath,
         Integer containerPort,
         String healthCheckPath,

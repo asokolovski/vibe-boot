@@ -31,7 +31,7 @@ class DockerServiceTest {
     void buildImage_runsDockerBuildAndReturnsImageName() {
         DockerService dockerService = new DockerService(commandRunner);
         Project project = project("Payment API");
-        Path projectDirectory = Path.of("/tmp/sample-app");
+        Path projectDirectory = Path.of("/tmp/vibeboot-workspaces/source");
         String imageName = "vibeboot-payment-api:" + DEPLOYMENT_ID;
 
         when(commandRunner.run(
@@ -50,7 +50,7 @@ class DockerServiceTest {
     void buildImage_throwsWhenDockerBuildFails() {
         DockerService dockerService = new DockerService(commandRunner);
         Project project = project("Payment API");
-        Path projectDirectory = Path.of("/tmp/sample-app");
+        Path projectDirectory = Path.of("/tmp/vibeboot-workspaces/source");
         String imageName = "vibeboot-payment-api:" + DEPLOYMENT_ID;
 
         when(commandRunner.run(
@@ -271,9 +271,8 @@ class DockerServiceTest {
     private Project project(String name) {
         return new Project(
                 name,
-                "https://github.com/alexeisoki/sample-app",
+                "https://github.com/alexeisoki/example-app",
                 "main",
-                "npm start",
                 "Dockerfile",
                 8080,
                 "/health"

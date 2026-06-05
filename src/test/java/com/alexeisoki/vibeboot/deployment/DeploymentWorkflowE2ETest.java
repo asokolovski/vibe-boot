@@ -259,7 +259,6 @@ class DeploymentWorkflowE2ETest {
         assertThat(project).isNotNull();
         assertThat(project.id()).isNotNull();
         assertThat(project.name()).isEqualTo(name);
-        assertThat(project.localPath()).isNull();
         assertThat(project.branch()).isEqualTo("main");
         assertThat(project.dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(project.containerPort()).isEqualTo(8080);

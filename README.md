@@ -155,8 +155,8 @@ containerPort   = 8080
 healthCheckPath = /health
 ```
 
-`localPath` is legacy project metadata and is not required or used by the V3.5
-deployment executor.
+Projects are deployed from their configured GitHub repository. Local filesystem
+paths and run commands are no longer part of the project API.
 
 ### Add A Project Environment Variable
 

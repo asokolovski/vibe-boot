@@ -50,21 +50,9 @@ class ProjectControllerTest {
 
     @Test
     void createProject_returnsCreatedAndResponseJson() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-05-14T12:00:00Z");
-        ProjectResponse response = new ProjectResponse(
-                projectId,
-                "vibe-payment-api",
-                "https://github.com/alexeisoko/payment-api",
-                "main",
-                null,
-                null,
-                "Dockerfile",
-                8080,
-                "/health",
-                createdAt
-        );
+        ProjectResponse response = projectResponse(projectId, "vibe-payment-api", createdAt);
         String requestJson = """
                 {
                   "name": "vibe-payment-api",
@@ -74,7 +62,6 @@ class ProjectControllerTest {
 
         when(projectService.createProject(any(CreateProjectRequest.class))).thenReturn(response);
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -83,8 +70,6 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.name").value("vibe-payment-api"))
                 .andExpect(jsonPath("$.repositoryUrl").value("https://github.com/alexeisoko/payment-api"))
                 .andExpect(jsonPath("$.branch").value("main"))
-                .andExpect(jsonPath("$.runCommand").doesNotExist())
-                .andExpect(jsonPath("$.localPath").doesNotExist())
                 .andExpect(jsonPath("$.dockerfilePath").value("Dockerfile"))
                 .andExpect(jsonPath("$.containerPort").value(8080))
                 .andExpect(jsonPath("$.healthCheckPath").value("/health"))
@@ -95,18 +80,14 @@ class ProjectControllerTest {
 
     @Test
     void createProject_returnsBadRequestWhenFieldsAreBlank() throws Exception {
-        // Arrange
         String requestJson = """
                 {
                   "name": "",
                   "repositoryUrl": "",
-                  "branch": "",
-                  "localPath": "",
-                  "runCommand": ""
+                  "branch": ""
                 }
                 """;
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -119,7 +100,6 @@ class ProjectControllerTest {
 
     @Test
     void createProject_returnsBadRequestWhenRepositoryUrlIsNotPublicGithubHttps() throws Exception {
-        // Arrange
         String requestJson = """
                 {
                   "name": "vibe-payment-api",
@@ -127,7 +107,6 @@ class ProjectControllerTest {
                 }
                 """;
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -139,7 +118,6 @@ class ProjectControllerTest {
 
     @Test
     void createProject_returnsBadRequestWhenDockerfilePathEscapesRepository() throws Exception {
-        // Arrange
         String requestJson = """
                 {
                   "name": "vibe-payment-api",
@@ -148,7 +126,6 @@ class ProjectControllerTest {
                 }
                 """;
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -160,7 +137,6 @@ class ProjectControllerTest {
 
     @Test
     void createProject_returnsBadRequestWhenContainerPortIsOutOfRange() throws Exception {
-        // Arrange
         String requestJson = """
                 {
                   "name": "vibe-payment-api",
@@ -169,7 +145,6 @@ class ProjectControllerTest {
                 }
                 """;
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -181,7 +156,6 @@ class ProjectControllerTest {
 
     @Test
     void createProject_returnsBadRequestWhenHealthCheckPathDoesNotStartWithSlash() throws Exception {
-        // Arrange
         String requestJson = """
                 {
                   "name": "vibe-payment-api",
@@ -190,7 +164,6 @@ class ProjectControllerTest {
                 }
                 """;
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -201,65 +174,13 @@ class ProjectControllerTest {
     }
 
     @Test
-    void createProject_allowsMissingRunCommand() throws Exception {
-        // Arrange
-        UUID projectId = UUID.randomUUID();
-        Instant createdAt = Instant.parse("2026-05-14T12:00:00Z");
-        ProjectResponse response = new ProjectResponse(
-                projectId,
-                "vibe-payment-api",
-                "https://github.com/alexeisoko/payment-api",
-                "main",
-                null,
-                "/home/alexei/projects/sample-app",
-                "Dockerfile",
-                8080,
-                "/health",
-                createdAt
-        );
-        String requestJson = """
-                {
-                  "name": "vibe-payment-api",
-                  "repositoryUrl": "https://github.com/alexeisoko/payment-api",
-                  "branch": "main",
-                  "localPath": "/home/alexei/projects/sample-app"
-                }
-                """;
-
-        when(projectService.createProject(any(CreateProjectRequest.class))).thenReturn(response);
-
-        // Act + Assert
-        mockMvc.perform(post("/api/projects")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestJson))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(projectId.toString()))
-                .andExpect(jsonPath("$.runCommand").doesNotExist());
-
-        verify(projectService, times(1)).createProject(any(CreateProjectRequest.class));
-    }
-
-    @Test
     void getAllProjects_returnsOkAndProjectListJson() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-05-14T12:00:00Z");
-        ProjectResponse response = new ProjectResponse(
-                projectId,
-                "vibe-payment-api",
-                "https://github.com/alexeisoko/payment-api",
-                "main",
-                "./gradlew bootRun",
-                "/home/alexei/projects/sample-app",
-                "Dockerfile",
-                8080,
-                "/health",
-                createdAt
-        );
+        ProjectResponse response = projectResponse(projectId, "vibe-payment-api", createdAt);
 
         when(projectService.getAllProjects()).thenReturn(List.of(response));
 
-        // Act + Assert
         mockMvc.perform(get("/api/projects"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
@@ -267,8 +188,6 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].name").value("vibe-payment-api"))
                 .andExpect(jsonPath("$[0].repositoryUrl").value("https://github.com/alexeisoko/payment-api"))
                 .andExpect(jsonPath("$[0].branch").value("main"))
-                .andExpect(jsonPath("$[0].runCommand").value("./gradlew bootRun"))
-                .andExpect(jsonPath("$[0].localPath").value("/home/alexei/projects/sample-app"))
                 .andExpect(jsonPath("$[0].dockerfilePath").value("Dockerfile"))
                 .andExpect(jsonPath("$[0].containerPort").value(8080))
                 .andExpect(jsonPath("$[0].healthCheckPath").value("/health"))
@@ -279,7 +198,6 @@ class ProjectControllerTest {
 
     @Test
     void getDeploymentsForProject_returnsOkAndDeploymentListJson() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
         UUID deploymentId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
@@ -299,7 +217,6 @@ class ProjectControllerTest {
 
         when(deploymentService.getDeploymentsForProject(projectId)).thenReturn(List.of(response));
 
-        // Act + Assert
         mockMvc.perform(get("/api/projects/{projectId}/deployments", projectId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
@@ -320,13 +237,11 @@ class ProjectControllerTest {
 
     @Test
     void getDeploymentsForProject_returnsNotFoundWhenProjectIsMissing() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
 
         when(deploymentService.getDeploymentsForProject(projectId))
                 .thenThrow(new ResourceNotFoundException("Project not found"));
 
-        // Act + Assert
         mockMvc.perform(get("/api/projects/{projectId}/deployments", projectId))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Project not found"));
@@ -336,7 +251,6 @@ class ProjectControllerTest {
 
     @Test
     void addEnvVar_returnsCreatedMetadataWithoutSecretValues() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
         UUID envId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-06-03T12:00:00Z");
@@ -356,7 +270,6 @@ class ProjectControllerTest {
         when(environmentVariableService.addEnvVar(any(UUID.class), any(AddProjectEnvironmentVariableRequest.class)))
                 .thenReturn(response);
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects/{projectId}/env", projectId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -373,7 +286,6 @@ class ProjectControllerTest {
 
     @Test
     void addEnvVar_returnsBadRequestWhenKeyIsInvalid() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
         String requestJson = """
                 {
@@ -382,7 +294,6 @@ class ProjectControllerTest {
                 }
                 """;
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects/{projectId}/env", projectId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -395,7 +306,6 @@ class ProjectControllerTest {
 
     @Test
     void addEnvVar_returnsConflictWhenKeyAlreadyExists() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
         String requestJson = """
                 {
@@ -407,7 +317,6 @@ class ProjectControllerTest {
         when(environmentVariableService.addEnvVar(any(UUID.class), any(AddProjectEnvironmentVariableRequest.class)))
                 .thenThrow(new ResourceConflictException("Project environment variable key already exists"));
 
-        // Act + Assert
         mockMvc.perform(post("/api/projects/{projectId}/env", projectId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -417,7 +326,6 @@ class ProjectControllerTest {
 
     @Test
     void listEnvVars_returnsMetadataWithoutSecretValues() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
         UUID envId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-06-03T12:00:00Z");
@@ -430,7 +338,6 @@ class ProjectControllerTest {
 
         when(environmentVariableService.listEnvVars(projectId)).thenReturn(List.of(response));
 
-        // Act + Assert
         mockMvc.perform(get("/api/projects/{projectId}/env", projectId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
@@ -446,14 +353,25 @@ class ProjectControllerTest {
 
     @Test
     void deleteEnvVar_returnsNoContent() throws Exception {
-        // Arrange
         UUID projectId = UUID.randomUUID();
         UUID envId = UUID.randomUUID();
 
-        // Act + Assert
         mockMvc.perform(delete("/api/projects/{projectId}/env/{envId}", projectId, envId))
                 .andExpect(status().isNoContent());
 
         verify(environmentVariableService).deleteEnvVar(projectId, envId);
+    }
+
+    private static ProjectResponse projectResponse(UUID projectId, String name, Instant createdAt) {
+        return new ProjectResponse(
+                projectId,
+                name,
+                "https://github.com/alexeisoko/payment-api",
+                "main",
+                "Dockerfile",
+                8080,
+                "/health",
+                createdAt
+        );
     }
 }

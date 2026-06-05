@@ -42,12 +42,6 @@ public class Project {
     private String branch;
 
     @Column(nullable = true)
-    private String runCommand;
-
-    @Column(nullable = true)
-    private String localPath;
-
-    @Column(nullable = true)
     private String dockerfilePath = DEFAULT_DOCKERFILE_PATH;
 
     @Column(nullable = true)
@@ -63,28 +57,14 @@ public class Project {
     protected Project() {
     }
 
-    public Project(String name, String repositoryUrl, String branch, String runCommand) {
-        this(name, repositoryUrl, branch, runCommand, null, null, null, null);
+    public Project(String name, String repositoryUrl, String branch) {
+        this(name, repositoryUrl, branch, null, null, null);
     }
 
     public Project(
             String name,
             String repositoryUrl,
             String branch,
-            String runCommand,
-            String dockerfilePath,
-            Integer containerPort,
-            String healthCheckPath
-    ) {
-        this(name, repositoryUrl, branch, runCommand, null, dockerfilePath, containerPort, healthCheckPath);
-    }
-
-    public Project(
-            String name,
-            String repositoryUrl,
-            String branch,
-            String runCommand,
-            String localPath,
             String dockerfilePath,
             Integer containerPort,
             String healthCheckPath
@@ -92,8 +72,6 @@ public class Project {
         this.name = name;
         this.repositoryUrl = repositoryUrl;
         this.branch = defaultIfBlank(branch, DEFAULT_BRANCH);
-        this.runCommand = nullIfBlank(runCommand);
-        this.localPath = nullIfBlank(localPath);
         this.dockerfilePath = defaultIfBlank(dockerfilePath, DEFAULT_DOCKERFILE_PATH);
         this.containerPort = containerPort != null ? containerPort : DEFAULT_CONTAINER_PORT;
         this.healthCheckPath = defaultIfBlank(healthCheckPath, DEFAULT_HEALTH_CHECK_PATH);
@@ -123,14 +101,6 @@ public class Project {
         return defaultIfBlank(branch, DEFAULT_BRANCH);
     }
 
-    public String getRunCommand() {
-        return runCommand;
-    }
-
-    public String getLocalPath() {
-        return localPath;
-    }
-
     public String getDockerfilePath() {
         return defaultIfBlank(dockerfilePath, DEFAULT_DOCKERFILE_PATH);
     }
@@ -151,7 +121,4 @@ public class Project {
         return value == null || value.isBlank() ? defaultValue : value;
     }
 
-    private String nullIfBlank(String value) {
-        return value == null || value.isBlank() ? null : value;
-    }
 }

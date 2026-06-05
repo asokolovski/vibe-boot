@@ -375,7 +375,6 @@ class DeploymentExecutorTest {
                 "Vibe Boot",
                 "https://github.com/alexeisoko/vibe-boot",
                 "main",
-                null,
                 "Dockerfile",
                 8080,
                 "/health"

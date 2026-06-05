@@ -1,9 +1,0 @@
-{
-  "name": "vibe-boot-sample-app",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Tiny deployable sample app for vibe-boot V3 Docker integration.",
-  "scripts": {
-    "start": "node src/server.js"
-  }
-}

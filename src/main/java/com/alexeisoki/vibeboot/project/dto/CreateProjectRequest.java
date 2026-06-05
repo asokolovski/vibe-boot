@@ -17,8 +17,6 @@ public record CreateProjectRequest(
         )
         String repositoryUrl,
         String branch,
-        String runCommand,
-        String localPath,
         String dockerfilePath,
         @Min(1)
         @Max(65535)
@@ -26,11 +24,7 @@ public record CreateProjectRequest(
         String healthCheckPath
 ) {
     public CreateProjectRequest(String name, String repositoryUrl) {
-        this(name, repositoryUrl, null, null, null, null, null, null);
-    }
-
-    public CreateProjectRequest(String name, String repositoryUrl, String branch, String runCommand, String localPath) {
-        this(name, repositoryUrl, branch, runCommand, localPath, null, null, null);
+        this(name, repositoryUrl, null, null, null, null);
     }
 
     @AssertTrue(message = "must be relative and stay inside the repository")

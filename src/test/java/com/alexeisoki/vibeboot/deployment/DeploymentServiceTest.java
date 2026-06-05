@@ -65,8 +65,7 @@ class DeploymentServiceTest {
         Project project = new Project(
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
-                "main",
-                "./gradlew bootRun"
+                "main"
         );
         Deployment savedDeployment = deploymentWithGeneratedFields(deploymentId, projectId, createdAt);
 
@@ -185,8 +184,7 @@ class DeploymentServiceTest {
         Project project = new Project(
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
-                "main",
-                "./gradlew bootRun"
+                "main"
         );
         Deployment firstDeployment = deploymentWithGeneratedFields(firstDeploymentId, projectId, firstCreatedAt);
         Deployment secondDeployment = deploymentWithGeneratedFields(secondDeploymentId, projectId, secondCreatedAt);

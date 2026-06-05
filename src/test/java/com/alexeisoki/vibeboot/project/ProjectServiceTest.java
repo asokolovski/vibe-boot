@@ -28,8 +28,7 @@ class ProjectServiceTest {
     private ProjectRepository projectRepository;
 
     @Test
-    void createProject_savesProjectAndReturnsResponse() {
-        // Arrange
+    void createProject_savesProjectAndReturnsDefaults() {
         ProjectService projectService = new ProjectService(projectRepository);
         CreateProjectRequest request = new CreateProjectRequest(
                 "Vibe Boot",
@@ -44,39 +43,32 @@ class ProjectServiceTest {
                 null,
                 null,
                 null,
+                null,
                 generatedCreatedAt
         );
 
         when(projectRepository.save(any(Project.class))).thenReturn(savedProject);
 
-        // Act
         ProjectResponse response = projectService.createProject(request);
 
-        // Assert
         assertThat(response.id()).isEqualTo(generatedId);
         assertThat(response.name()).isEqualTo("Vibe Boot");
         assertThat(response.repositoryUrl()).isEqualTo("https://github.com/alexeisoki/vibe-boot");
         assertThat(response.branch()).isEqualTo("main");
-        assertThat(response.runCommand()).isNull();
-        assertThat(response.localPath()).isNull();
         assertThat(response.dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(response.containerPort()).isEqualTo(8080);
         assertThat(response.healthCheckPath()).isEqualTo("/health");
         assertThat(response.createdAt()).isEqualTo(generatedCreatedAt);
-
         verify(projectRepository).save(any(Project.class));
     }
 
     @Test
     void createProject_usesProvidedDockerRuntimeFields() {
-        // Arrange
         ProjectService projectService = new ProjectService(projectRepository);
         CreateProjectRequest request = new CreateProjectRequest(
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
                 "main",
-                "./gradlew bootRun",
-                "/home/alexei/projects/sample-app",
                 "apps/api/Dockerfile",
                 3000,
                 "/ready"
@@ -88,8 +80,6 @@ class ProjectServiceTest {
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
                 "main",
-                "./gradlew bootRun",
-                "/home/alexei/projects/sample-app",
                 "apps/api/Dockerfile",
                 3000,
                 "/ready",
@@ -98,57 +88,17 @@ class ProjectServiceTest {
 
         when(projectRepository.save(any(Project.class))).thenReturn(savedProject);
 
-        // Act
         ProjectResponse response = projectService.createProject(request);
 
-        // Assert
-        assertThat(response.localPath()).isEqualTo("/home/alexei/projects/sample-app");
+        assertThat(response.branch()).isEqualTo("main");
         assertThat(response.dockerfilePath()).isEqualTo("apps/api/Dockerfile");
         assertThat(response.containerPort()).isEqualTo(3000);
         assertThat(response.healthCheckPath()).isEqualTo("/ready");
-
-        verify(projectRepository).save(any(Project.class));
-    }
-
-    @Test
-    void createProject_allowsMissingRunCommand() {
-        // Arrange
-        ProjectService projectService = new ProjectService(projectRepository);
-        CreateProjectRequest request = new CreateProjectRequest(
-                "Vibe Boot",
-                "https://github.com/alexeisoki/vibe-boot",
-                "main",
-                null,
-                "/home/alexei/projects/sample-app"
-        );
-        UUID generatedId = UUID.randomUUID();
-        Instant generatedCreatedAt = Instant.parse("2026-05-14T12:00:00Z");
-        Project savedProject = projectWithGeneratedFields(
-                generatedId,
-                "Vibe Boot",
-                "https://github.com/alexeisoki/vibe-boot",
-                "main",
-                null,
-                "/home/alexei/projects/sample-app",
-                generatedCreatedAt
-        );
-
-        when(projectRepository.save(any(Project.class))).thenReturn(savedProject);
-
-        // Act
-        ProjectResponse response = projectService.createProject(request);
-
-        // Assert
-        assertThat(response.runCommand()).isNull();
-        assertThat(response.localPath()).isEqualTo("/home/alexei/projects/sample-app");
-        assertThat(response.dockerfilePath()).isEqualTo("Dockerfile");
-
         verify(projectRepository).save(any(Project.class));
     }
 
     @Test
     void getAllProjects_returnsProjectResponses() {
-        // Arrange
         ProjectService projectService = new ProjectService(projectRepository);
         UUID firstId = UUID.randomUUID();
         UUID secondId = UUID.randomUUID();
@@ -159,8 +109,9 @@ class ProjectServiceTest {
                 "First App",
                 "https://github.com/example/first",
                 "main",
-                "npm start",
-                "/home/alexei/projects/first",
+                null,
+                null,
+                null,
                 firstCreatedAt
         );
         Project secondProject = projectWithGeneratedFields(
@@ -168,24 +119,21 @@ class ProjectServiceTest {
                 "Second App",
                 "https://github.com/example/second",
                 "develop",
-                "./gradlew bootRun",
-                "/home/alexei/projects/second",
+                "services/api/Dockerfile",
+                3000,
+                "/ready",
                 secondCreatedAt
         );
 
         when(projectRepository.findAll()).thenReturn(List.of(firstProject, secondProject));
 
-        // Act
         List<ProjectResponse> responses = projectService.getAllProjects();
 
-        // Assert
         assertThat(responses).hasSize(2);
         assertThat(responses.get(0).id()).isEqualTo(firstId);
         assertThat(responses.get(0).name()).isEqualTo("First App");
         assertThat(responses.get(0).repositoryUrl()).isEqualTo("https://github.com/example/first");
         assertThat(responses.get(0).branch()).isEqualTo("main");
-        assertThat(responses.get(0).runCommand()).isEqualTo("npm start");
-        assertThat(responses.get(0).localPath()).isEqualTo("/home/alexei/projects/first");
         assertThat(responses.get(0).dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(responses.get(0).containerPort()).isEqualTo(8080);
         assertThat(responses.get(0).healthCheckPath()).isEqualTo("/health");
@@ -194,51 +142,41 @@ class ProjectServiceTest {
         assertThat(responses.get(1).name()).isEqualTo("Second App");
         assertThat(responses.get(1).repositoryUrl()).isEqualTo("https://github.com/example/second");
         assertThat(responses.get(1).branch()).isEqualTo("develop");
-        assertThat(responses.get(1).runCommand()).isEqualTo("./gradlew bootRun");
-        assertThat(responses.get(1).localPath()).isEqualTo("/home/alexei/projects/second");
-        assertThat(responses.get(1).dockerfilePath()).isEqualTo("Dockerfile");
-        assertThat(responses.get(1).containerPort()).isEqualTo(8080);
-        assertThat(responses.get(1).healthCheckPath()).isEqualTo("/health");
+        assertThat(responses.get(1).dockerfilePath()).isEqualTo("services/api/Dockerfile");
+        assertThat(responses.get(1).containerPort()).isEqualTo(3000);
+        assertThat(responses.get(1).healthCheckPath()).isEqualTo("/ready");
         assertThat(responses.get(1).createdAt()).isEqualTo(secondCreatedAt);
-
         verify(projectRepository).findAll();
     }
 
     @Test
     void getProjectOrThrow_returnsProjectWhenFound() {
-        // Arrange
         ProjectService projectService = new ProjectService(projectRepository);
         UUID projectId = UUID.randomUUID();
         Project project = new Project(
                 "Vibe Boot",
                 "https://github.com/alexeisoki/vibe-boot",
-                "main",
-                "./gradlew bootRun"
+                "main"
         );
 
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
 
-        // Act
         Project result = projectService.getProjectOrThrow(projectId);
 
-        // Assert
         assertThat(result).isSameAs(project);
         verify(projectRepository).findById(projectId);
     }
 
     @Test
     void getProjectOrThrow_throwsWhenProjectIsMissing() {
-        // Arrange
         ProjectService projectService = new ProjectService(projectRepository);
         UUID projectId = UUID.randomUUID();
 
         when(projectRepository.findById(projectId)).thenReturn(Optional.empty());
 
-        // Act + Assert
         assertThatThrownBy(() -> projectService.getProjectOrThrow(projectId))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Project not found");
-
         verify(projectRepository).findById(projectId);
     }
 
@@ -247,32 +185,6 @@ class ProjectServiceTest {
             String name,
             String repositoryUrl,
             String branch,
-            String runCommand,
-            String localPath,
-            Instant createdAt
-    ) {
-        Project project = projectWithGeneratedFields(
-                id,
-                name,
-                repositoryUrl,
-                branch,
-                runCommand,
-                localPath,
-                null,
-                null,
-                null,
-                createdAt
-        );
-        return project;
-    }
-
-    private static Project projectWithGeneratedFields(
-            UUID id,
-            String name,
-            String repositoryUrl,
-            String branch,
-            String runCommand,
-            String localPath,
             String dockerfilePath,
             Integer containerPort,
             String healthCheckPath,
@@ -282,8 +194,6 @@ class ProjectServiceTest {
                 name,
                 repositoryUrl,
                 branch,
-                runCommand,
-                localPath,
                 dockerfilePath,
                 containerPort,
                 healthCheckPath
