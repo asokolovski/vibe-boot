@@ -13,6 +13,12 @@ java {
 	}
 }
 
+def frontendDir = layout.projectDirectory.dir('frontend')
+def frontendBuildDir = frontendDir.dir('dist')
+def frontendClasspathDir = layout.buildDirectory.dir('generated/frontend')
+def frontendStaticDir = frontendClasspathDir.map { it.dir('static') }
+def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+
 repositories {
 	mavenCentral()
 }
@@ -40,4 +46,60 @@ tasks.named('test') {
 		showCauses true
 		showStackTraces true
 	}
+}
+
+tasks.register('frontendInstall', Exec) {
+	workingDir = frontendDir.asFile
+
+	if (isWindows) {
+		commandLine 'cmd', '/c', 'npm ci'
+	} else {
+		commandLine 'bash', '-ic', 'npm ci'
+	}
+
+	inputs.file frontendDir.file('package.json')
+	inputs.file frontendDir.file('package-lock.json')
+	outputs.dir frontendDir.dir('node_modules')
+}
+
+tasks.register('frontendBuild', Exec) {
+	dependsOn 'frontendInstall'
+
+	workingDir = frontendDir.asFile
+
+	if (isWindows) {
+		commandLine 'cmd', '/c', 'npm run build'
+	} else {
+		commandLine 'bash', '-ic', 'npm run build'
+	}
+
+	inputs.files fileTree(frontendDir.dir('src'))
+	inputs.file frontendDir.file('index.html')
+	inputs.file frontendDir.file('package.json')
+	inputs.file frontendDir.file('package-lock.json')
+	inputs.file frontendDir.file('tsconfig.json')
+	inputs.file frontendDir.file('tsconfig.app.json')
+	inputs.file frontendDir.file('tsconfig.node.json')
+	inputs.file frontendDir.file('vite.config.ts')
+	outputs.dir frontendBuildDir
+}
+
+tasks.register('copyFrontendBuild', Copy) {
+	dependsOn 'frontendBuild'
+
+	from frontendBuildDir
+	into frontendStaticDir
+}
+
+tasks.named('bootJar') {
+	dependsOn 'copyFrontendBuild'
+
+	from(frontendStaticDir) {
+		into 'BOOT-INF/classes/static'
+	}
+}
+
+tasks.named('bootRun') {
+	dependsOn 'copyFrontendBuild'
+	classpath += files(frontendClasspathDir)
 }

@@ -5,10 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,7 +32,7 @@ class GitServiceTest {
         GitService gitService = new GitService(commandRunner);
         List<String> command = cloneCommand("main", targetDirectory);
 
-        when(commandRunner.run(command, Duration.ofMinutes(2)))
+        when(commandRunner.run(command, nonInteractiveGitEnvironment(), Duration.ofMinutes(2)))
                 .thenReturn(new CommandResult(
                         0,
                         "",
@@ -39,7 +43,7 @@ class GitServiceTest {
         GitCloneResult result = gitService.cloneRepository(REPOSITORY_URL, "main", targetDirectory);
 
         assertThat(result.output()).contains("Cloning into");
-        verify(commandRunner).run(command, Duration.ofMinutes(2));
+        verify(commandRunner).run(command, nonInteractiveGitEnvironment(), Duration.ofMinutes(2));
     }
 
     @Test
@@ -47,12 +51,12 @@ class GitServiceTest {
         GitService gitService = new GitService(commandRunner);
         List<String> command = cloneCommand("develop", targetDirectory);
 
-        when(commandRunner.run(command, Duration.ofMinutes(2)))
+        when(commandRunner.run(command, nonInteractiveGitEnvironment(), Duration.ofMinutes(2)))
                 .thenReturn(new CommandResult(0, "", "", false));
 
         gitService.cloneRepository(REPOSITORY_URL, "develop", targetDirectory);
 
-        verify(commandRunner).run(command, Duration.ofMinutes(2));
+        verify(commandRunner).run(command, nonInteractiveGitEnvironment(), Duration.ofMinutes(2));
     }
 
     @Test
@@ -60,7 +64,7 @@ class GitServiceTest {
         GitService gitService = new GitService(commandRunner);
         List<String> command = cloneCommand("missing-branch", targetDirectory);
 
-        when(commandRunner.run(command, Duration.ofMinutes(2)))
+        when(commandRunner.run(command, nonInteractiveGitEnvironment(), Duration.ofMinutes(2)))
                 .thenReturn(new CommandResult(
                         128,
                         "",
@@ -83,7 +87,7 @@ class GitServiceTest {
         GitService gitService = new GitService(commandRunner);
         List<String> command = cloneCommand("main", targetDirectory);
 
-        when(commandRunner.run(command, Duration.ofMinutes(2)))
+        when(commandRunner.run(command, nonInteractiveGitEnvironment(), Duration.ofMinutes(2)))
                 .thenReturn(new CommandResult(-1, "", "", true));
 
         assertThatThrownBy(() -> gitService.cloneRepository(REPOSITORY_URL, "main", targetDirectory))
@@ -104,8 +108,9 @@ class GitServiceTest {
                 .hasMessage("repositoryUrl must be a public HTTPS GitHub repository URL");
 
         verify(commandRunner, never()).run(
-                org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.any(Duration.class)
+                anyList(),
+                anyMap(),
+                any(Duration.class)
         );
     }
 
@@ -118,8 +123,9 @@ class GitServiceTest {
                 .hasMessage("branch must not be blank");
 
         verify(commandRunner, never()).run(
-                org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.any(Duration.class)
+                anyList(),
+                anyMap(),
+                any(Duration.class)
         );
     }
 
@@ -132,8 +138,9 @@ class GitServiceTest {
                 .hasMessage("targetDirectory must not be null");
 
         verify(commandRunner, never()).run(
-                org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.any(Duration.class)
+                anyList(),
+                anyMap(),
+                any(Duration.class)
         );
     }
 
@@ -148,6 +155,15 @@ class GitServiceTest {
                 "--single-branch",
                 REPOSITORY_URL,
                 targetDirectory.toAbsolutePath().normalize().toString()
+        );
+    }
+
+    private Map<String, String> nonInteractiveGitEnvironment() {
+        return Map.of(
+                "GIT_TERMINAL_PROMPT", "0",
+                "GCM_INTERACTIVE", "never",
+                "GIT_ASKPASS", "",
+                "SSH_ASKPASS", ""
         );
     }
 }

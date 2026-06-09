@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -52,6 +53,18 @@ class CommandRunnerTest {
 
         assertThat(result.exitCode()).isZero();
         assertThat(result.stdout().trim()).isEqualTo(tempDirectory.toString());
+    }
+
+    @Test
+    void run_appliesEnvironmentOverrides() {
+        CommandResult result = commandRunner.run(
+                List.of("sh", "-c", "printf '%s' \"$VIBEBOOT_COMMAND_RUNNER_TEST\""),
+                Map.of("VIBEBOOT_COMMAND_RUNNER_TEST", "env-value"),
+                Duration.ofSeconds(1)
+        );
+
+        assertThat(result.exitCode()).isZero();
+        assertThat(result.stdout()).isEqualTo("env-value");
     }
 
     @Test

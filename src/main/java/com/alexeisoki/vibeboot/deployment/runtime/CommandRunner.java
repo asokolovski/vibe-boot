@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
@@ -98,15 +99,32 @@ public class CommandRunner {
     private static final int COMMAND_START_FAILED_EXIT_CODE = -1;
 
     public CommandResult run(List<String> command, Duration timeout) {
-        return run(command, null, timeout);
+        return run(command, null, Map.of(), timeout);
+    }
+
+    public CommandResult run(List<String> command, Map<String, String> environment, Duration timeout) {
+        return run(command, null, environment, timeout);
     }
 
     public CommandResult run(List<String> command, Path workingDirectory, Duration timeout) {
+        return run(command, workingDirectory, Map.of(), timeout);
+    }
+
+    public CommandResult run(
+            List<String> command,
+            Path workingDirectory,
+            Map<String, String> environment,
+            Duration timeout
+    ) {
         validate(command, timeout);
 
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         if (workingDirectory != null) {
             processBuilder.directory(workingDirectory.toFile());
+        }
+
+        if (environment != null && !environment.isEmpty()) {
+            processBuilder.environment().putAll(environment);
         }
 
         Process process;

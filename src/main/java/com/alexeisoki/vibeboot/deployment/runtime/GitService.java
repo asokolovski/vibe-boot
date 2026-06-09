@@ -3,6 +3,7 @@ package com.alexeisoki.vibeboot.deployment.runtime;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
@@ -10,6 +11,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class GitService {
     private static final Duration CLONE_TIMEOUT = Duration.ofMinutes(2);
+    private static final Map<String, String> NON_INTERACTIVE_GIT_ENVIRONMENT = Map.of(
+            "GIT_TERMINAL_PROMPT", "0",
+            "GCM_INTERACTIVE", "never",
+            "GIT_ASKPASS", "",
+            "SSH_ASKPASS", ""
+    );
     private static final Pattern PUBLIC_GITHUB_REPOSITORY_URL = Pattern.compile(
             "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\\.git)?/?$"
     );
@@ -39,6 +46,7 @@ public class GitService {
                         repositoryUrl,
                         targetDirectory.toAbsolutePath().normalize().toString()
                 ),
+                NON_INTERACTIVE_GIT_ENVIRONMENT,
                 CLONE_TIMEOUT
         );
 
