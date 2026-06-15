@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
 import {
+  ApiError,
+  getCurrentUser,
   getProjects,
+  logout,
+  type CurrentUserResponse,
   type DeploymentResponse,
   type ProjectResponse,
 } from './api'
 import DeploymentsPanel from './components/DeploymentsPanel'
 import LogsPanel from './components/LogsPanel'
+import LoginPage from './components/LoginPage'
 import ProjectCreateForm from './components/ProjectCreateForm'
 import ProjectDetails from './components/ProjectDetails'
 import ProjectEnvironmentPanel from './components/ProjectEnvironmentPanel'
@@ -14,7 +19,15 @@ import WorkspaceHeader from './components/WorkspaceHeader'
 import type { LoadState } from './types'
 import './App.css'
 
-function App() {
+type AuthState = 'checking' | 'authenticated' | 'unauthenticated'
+
+function Dashboard({
+  currentUser,
+  onLogout,
+}: {
+  currentUser: CurrentUserResponse
+  onLogout: () => void
+}) {
   const [projects, setProjects] = useState<ProjectResponse[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [loadState, setLoadState] = useState<LoadState>('loading')
@@ -75,7 +88,11 @@ function App() {
   return (
     <main className="dashboard-shell">
       <section className="workspace">
-        <WorkspaceHeader loadState={loadState} />
+        <WorkspaceHeader
+          currentUser={currentUser}
+          loadState={loadState}
+          onLogout={onLogout}
+        />
 
         <section className="dashboard-grid" aria-label="Dashboard overview">
           <section className="panel project-list-panel" id="projects">
@@ -147,6 +164,86 @@ function App() {
       ) : null}
     </main>
   )
+}
+
+function App() {
+  const [authState, setAuthState] = useState<AuthState>('checking')
+  const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    async function loadCurrentUser() {
+      try {
+        const user = await getCurrentUser()
+
+        if (!active) {
+          return
+        }
+
+        setCurrentUser(user)
+        setAuthState('authenticated')
+        if (window.location.pathname === '/login') {
+          window.history.replaceState(null, '', '/')
+        }
+      } catch (error) {
+        if (!active) {
+          return
+        }
+
+        if (error instanceof ApiError && error.status === 401) {
+          setCurrentUser(null)
+          setAuthState('unauthenticated')
+          if (window.location.pathname !== '/login') {
+            window.history.replaceState(null, '', '/login')
+          }
+          return
+        }
+
+        setCurrentUser(null)
+        setAuthState('unauthenticated')
+      }
+    }
+
+    loadCurrentUser()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const handleLogout = async () => {
+    await logout()
+    setCurrentUser(null)
+    setAuthState('unauthenticated')
+    window.history.replaceState(null, '', '/login')
+  }
+
+  if (authState === 'checking') {
+    return (
+      <main className="login-shell">
+        <section className="login-panel" aria-label="Loading session">
+          <div className="brand login-brand">
+            <span className="brand-mark">VB</span>
+            <div>
+              <h1>Vibe Boot</h1>
+              <p>Deployment dashboard</p>
+            </div>
+          </div>
+          <div className="login-copy">
+            <p className="eyebrow">Session</p>
+            <h2>Checking login</h2>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  if (authState === 'unauthenticated' || currentUser === null) {
+    return <LoginPage />
+  }
+
+  return <Dashboard currentUser={currentUser} onLogout={handleLogout} />
 }
 
 export default App

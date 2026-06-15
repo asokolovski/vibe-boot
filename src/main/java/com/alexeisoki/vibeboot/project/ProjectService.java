@@ -20,13 +20,18 @@ public class ProjectService {
     }
 
     public ProjectResponse createProject(CreateProjectRequest request) {
+        return createProject(request, null);
+    }
+
+    public ProjectResponse createProject(CreateProjectRequest request, UUID currentUserId) {
         Project project = new Project(
                 request.name(),
                 request.repositoryUrl(),
                 request.branch(),
                 request.dockerfilePath(),
                 request.containerPort(),
-                request.healthCheckPath()
+                request.healthCheckPath(),
+                currentUserId
         );
 
         Project savedProject = projectRepository.save(project);
@@ -45,10 +50,25 @@ public class ProjectService {
         return responses;
     }
 
+    public List<ProjectResponse> getProjectsForUser(UUID currentUserId) {
+        List<Project> projects = projectRepository.findByOwnerUserId(currentUserId);
+        List<ProjectResponse> responses = new ArrayList<>();
+        for (Project project : projects) {
+            responses.add(toResponse(project));
+        }
+
+        return responses;
+    }
+
     // This is a helper method to get a Project by ID or throw an exception if it doesn't exist
     // Will come in handy later down the line when we want to create a deployment for a specific project, since we'll need to look up the project by ID first.
     public Project getProjectOrThrow(UUID id) {
         return projectRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+    }
+
+    public Project getProjectForUserOrThrow(UUID id, UUID currentUserId) {
+        return projectRepository.findByIdAndOwnerUserId(id, currentUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
     }
 
@@ -62,6 +82,7 @@ public class ProjectService {
                 project.getDockerfilePath(),
                 project.getContainerPort(),
                 project.getHealthCheckPath(),
+                project.getOwnerUserId(),
                 project.getCreatedAt()
         );
     }

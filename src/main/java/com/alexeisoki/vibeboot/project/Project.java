@@ -50,6 +50,9 @@ public class Project {
     @Column(nullable = true)
     private String healthCheckPath = DEFAULT_HEALTH_CHECK_PATH;
 
+    @Column(name = "owner_user_id", nullable = true)
+    private UUID ownerUserId;
+
     // Stored by JPA, but only set once when the entity is first inserted.
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
@@ -69,12 +72,25 @@ public class Project {
             Integer containerPort,
             String healthCheckPath
     ) {
+        this(name, repositoryUrl, branch, dockerfilePath, containerPort, healthCheckPath, null);
+    }
+
+    public Project(
+            String name,
+            String repositoryUrl,
+            String branch,
+            String dockerfilePath,
+            Integer containerPort,
+            String healthCheckPath,
+            UUID ownerUserId
+    ) {
         this.name = name;
         this.repositoryUrl = repositoryUrl;
         this.branch = defaultIfBlank(branch, DEFAULT_BRANCH);
         this.dockerfilePath = defaultIfBlank(dockerfilePath, DEFAULT_DOCKERFILE_PATH);
         this.containerPort = containerPort != null ? containerPort : DEFAULT_CONTAINER_PORT;
         this.healthCheckPath = defaultIfBlank(healthCheckPath, DEFAULT_HEALTH_CHECK_PATH);
+        this.ownerUserId = ownerUserId;
     }
 
     // @PrePersist runs right before JPA inserts this entity into the database.
@@ -111,6 +127,10 @@ public class Project {
 
     public String getHealthCheckPath() {
         return defaultIfBlank(healthCheckPath, DEFAULT_HEALTH_CHECK_PATH);
+    }
+
+    public UUID getOwnerUserId() {
+        return ownerUserId;
     }
 
     public Instant getCreatedAt() {

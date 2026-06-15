@@ -226,6 +226,67 @@ class DeploymentServiceTest {
     }
 
     @Test
+    void getDeploymentsForProjectWithCurrentUser_verifiesProjectOwnershipAndReturnsDeploymentResponses() {
+        // Arrange
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
+        );
+        UUID projectId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        UUID deploymentId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-15T13:00:00Z");
+        Project project = new Project(
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main"
+        );
+        Deployment deployment = deploymentWithGeneratedFields(deploymentId, projectId, createdAt);
+
+        when(projectService.getProjectForUserOrThrow(projectId, currentUserId)).thenReturn(project);
+        when(deploymentRepository.findByProjectIdOrderByCreatedAtDesc(projectId))
+                .thenReturn(List.of(deployment));
+
+        // Act
+        List<DeploymentResponse> responses = deploymentService.getDeploymentsForProject(projectId, currentUserId);
+
+        // Assert
+        assertThat(responses).hasSize(1);
+        assertThat(responses.getFirst().id()).isEqualTo(deploymentId);
+        assertThat(responses.getFirst().projectId()).isEqualTo(projectId);
+        verify(projectService).getProjectForUserOrThrow(projectId, currentUserId);
+        verify(deploymentRepository).findByProjectIdOrderByCreatedAtDesc(projectId);
+    }
+
+    @Test
+    void getDeploymentsForProjectWithCurrentUser_throwsWhenProjectDoesNotBelongToUser() {
+        // Arrange
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
+        );
+        UUID projectId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+
+        when(projectService.getProjectForUserOrThrow(projectId, currentUserId))
+                .thenThrow(new ResourceNotFoundException("Project not found"));
+
+        // Act + Assert
+        assertThatThrownBy(() -> deploymentService.getDeploymentsForProject(projectId, currentUserId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Project not found");
+
+        verify(projectService).getProjectForUserOrThrow(projectId, currentUserId);
+        verify(deploymentRepository, never()).findByProjectIdOrderByCreatedAtDesc(any());
+    }
+
+    @Test
     void stopDeployment_stopsContainerMarksStoppedWritesLogsAndReturnsResponse() {
         // Arrange
         DeploymentService deploymentService = new DeploymentService(

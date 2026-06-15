@@ -15,11 +15,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.alexeisoki.vibeboot.deployment.DeploymentService;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
+import com.alexeisoki.vibeboot.auth.AuthController;
 import com.alexeisoki.vibeboot.project.dto.AddProjectEnvironmentVariableRequest;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectEnvironmentVariableResponse;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
 
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 
 @RestController
@@ -41,40 +43,54 @@ public class ProjectController {
     }
 
     @PostMapping
-    public ResponseEntity<ProjectResponse> createProject(@Valid @RequestBody CreateProjectRequest request) {
-        ProjectResponse response = projectService.createProject(request);
+    public ResponseEntity<ProjectResponse> createProject(
+            @Valid @RequestBody CreateProjectRequest request,
+            HttpSession session
+    ) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        ProjectResponse response = projectService.createProject(request, currentUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
-    public List<ProjectResponse> getAllProjects() {
-        return projectService.getAllProjects();
+    public List<ProjectResponse> getAllProjects(HttpSession session) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        return projectService.getProjectsForUser(currentUserId);
     }
 
     @GetMapping("/{projectId}/deployments")
-    public List<DeploymentResponse> getDeploymentsForProject(@PathVariable UUID projectId) {
-        return deploymentService.getDeploymentsForProject(projectId);
+    public List<DeploymentResponse> getDeploymentsForProject(@PathVariable UUID projectId, HttpSession session) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        return deploymentService.getDeploymentsForProject(projectId, currentUserId);
     }
 
     @PostMapping("/{projectId}/env")
     public ResponseEntity<ProjectEnvironmentVariableResponse> addEnvVar(
             @PathVariable UUID projectId,
-            @Valid @RequestBody AddProjectEnvironmentVariableRequest request
+            @Valid @RequestBody AddProjectEnvironmentVariableRequest request,
+            HttpSession session
     ) {
-        ProjectEnvironmentVariableResponse response = environmentVariableService.addEnvVar(projectId, request);
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        ProjectEnvironmentVariableResponse response = environmentVariableService.addEnvVar(projectId, request, currentUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/{projectId}/env")
-    public List<ProjectEnvironmentVariableResponse> listEnvVars(@PathVariable UUID projectId) {
-        return environmentVariableService.listEnvVars(projectId);
+    public List<ProjectEnvironmentVariableResponse> listEnvVars(@PathVariable UUID projectId, HttpSession session) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        return environmentVariableService.listEnvVars(projectId, currentUserId);
     }
 
     @DeleteMapping("/{projectId}/env/{envId}")
-    public ResponseEntity<Void> deleteEnvVar(@PathVariable UUID projectId, @PathVariable UUID envId) {
-        environmentVariableService.deleteEnvVar(projectId, envId);
+    public ResponseEntity<Void> deleteEnvVar(
+            @PathVariable UUID projectId,
+            @PathVariable UUID envId,
+            HttpSession session
+    ) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        environmentVariableService.deleteEnvVar(projectId, envId, currentUserId);
 
         return ResponseEntity.noContent().build();
     }

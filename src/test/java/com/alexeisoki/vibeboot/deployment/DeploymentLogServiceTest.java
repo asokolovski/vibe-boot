@@ -21,6 +21,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
+import com.alexeisoki.vibeboot.project.Project;
+import com.alexeisoki.vibeboot.project.ProjectService;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @ExtendWith(MockitoExtension.class)
@@ -32,12 +34,12 @@ class DeploymentLogServiceTest {
     @Mock
     private DeploymentRepository deploymentRepository;
 
+    @Mock
+    private ProjectService projectService;
+
     @Test
     void appendLog_verifiesDeploymentExistsAndSavesLog() {
-        DeploymentLogService deploymentLogService = new DeploymentLogService(
-                deploymentLogRepository,
-                deploymentRepository
-        );
+        DeploymentLogService deploymentLogService = service();
         UUID deploymentId = UUID.randomUUID();
 
         when(deploymentRepository.existsById(deploymentId)).thenReturn(true);
@@ -57,10 +59,7 @@ class DeploymentLogServiceTest {
 
     @Test
     void appendLog_throwsWhenDeploymentIsMissing() {
-        DeploymentLogService deploymentLogService = new DeploymentLogService(
-                deploymentLogRepository,
-                deploymentRepository
-        );
+        DeploymentLogService deploymentLogService = service();
         UUID deploymentId = UUID.randomUUID();
 
         when(deploymentRepository.existsById(deploymentId)).thenReturn(false);
@@ -75,10 +74,7 @@ class DeploymentLogServiceTest {
 
     @Test
     void getLogs_verifiesDeploymentExistsAndReturnsLogResponses() {
-        DeploymentLogService deploymentLogService = new DeploymentLogService(
-                deploymentLogRepository,
-                deploymentRepository
-        );
+        DeploymentLogService deploymentLogService = service();
         UUID deploymentId = UUID.randomUUID();
         Instant firstCreatedAt = Instant.parse("2026-05-25T19:10:00Z");
         Instant secondCreatedAt = Instant.parse("2026-05-25T19:10:03Z");
@@ -104,10 +100,7 @@ class DeploymentLogServiceTest {
 
     @Test
     void getLogs_returnsEmptyListWhenDeploymentHasNoLogs() {
-        DeploymentLogService deploymentLogService = new DeploymentLogService(
-                deploymentLogRepository,
-                deploymentRepository
-        );
+        DeploymentLogService deploymentLogService = service();
         UUID deploymentId = UUID.randomUUID();
 
         when(deploymentRepository.existsById(deploymentId)).thenReturn(true);
@@ -123,10 +116,7 @@ class DeploymentLogServiceTest {
 
     @Test
     void getLogs_throwsWhenDeploymentIsMissing() {
-        DeploymentLogService deploymentLogService = new DeploymentLogService(
-                deploymentLogRepository,
-                deploymentRepository
-        );
+        DeploymentLogService deploymentLogService = service();
         UUID deploymentId = UUID.randomUUID();
 
         when(deploymentRepository.existsById(deploymentId)).thenReturn(false);
@@ -137,6 +127,55 @@ class DeploymentLogServiceTest {
 
         verify(deploymentRepository).existsById(deploymentId);
         verify(deploymentLogRepository, never()).findByDeploymentIdOrderByCreatedAtAsc(any(UUID.class));
+    }
+
+    @Test
+    void getLogsWithCurrentUser_verifiesDeploymentProjectBelongsToUser() {
+        DeploymentLogService deploymentLogService = service();
+        UUID deploymentId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-25T19:10:00Z");
+        Deployment deployment = new Deployment(projectId);
+        DeploymentLog log = deploymentLog(deploymentId, "Deployment queued", createdAt);
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(java.util.Optional.of(deployment));
+        when(projectService.getProjectForUserOrThrow(projectId, currentUserId))
+                .thenReturn(new Project("Vibe Boot", "https://github.com/alexeisoki/vibe-boot", "main"));
+        when(deploymentLogRepository.findByDeploymentIdOrderByCreatedAtAsc(deploymentId))
+                .thenReturn(List.of(log));
+
+        List<DeploymentLogResponse> responses = deploymentLogService.getLogs(deploymentId, currentUserId);
+
+        assertThat(responses).hasSize(1);
+        verify(projectService).getProjectForUserOrThrow(projectId, currentUserId);
+    }
+
+    @Test
+    void getLogsWithCurrentUser_throwsWhenDeploymentProjectDoesNotBelongToUser() {
+        DeploymentLogService deploymentLogService = service();
+        UUID deploymentId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        Deployment deployment = new Deployment(projectId);
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(java.util.Optional.of(deployment));
+        when(projectService.getProjectForUserOrThrow(projectId, currentUserId))
+                .thenThrow(new ResourceNotFoundException("Project not found"));
+
+        assertThatThrownBy(() -> deploymentLogService.getLogs(deploymentId, currentUserId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Project not found");
+
+        verify(deploymentLogRepository, never()).findByDeploymentIdOrderByCreatedAtAsc(any(UUID.class));
+    }
+
+    private DeploymentLogService service() {
+        return new DeploymentLogService(
+                deploymentLogRepository,
+                deploymentRepository,
+                projectService
+        );
     }
 
     private static DeploymentLog deploymentLog(UUID deploymentId, String message, Instant createdAt) {

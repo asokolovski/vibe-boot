@@ -98,6 +98,36 @@ class ProjectServiceTest {
     }
 
     @Test
+    void createProjectWithCurrentUser_savesProjectOwner() {
+        ProjectService projectService = new ProjectService(projectRepository);
+        CreateProjectRequest request = new CreateProjectRequest(
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot"
+        );
+        UUID ownerUserId = UUID.randomUUID();
+        UUID generatedId = UUID.randomUUID();
+        Instant generatedCreatedAt = Instant.parse("2026-05-14T12:00:00Z");
+        Project savedProject = projectWithGeneratedFields(
+                generatedId,
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                null,
+                null,
+                null,
+                null,
+                ownerUserId,
+                generatedCreatedAt
+        );
+
+        when(projectRepository.save(any(Project.class))).thenReturn(savedProject);
+
+        ProjectResponse response = projectService.createProject(request, ownerUserId);
+
+        assertThat(response.ownerUserId()).isEqualTo(ownerUserId);
+        verify(projectRepository).save(any(Project.class));
+    }
+
+    @Test
     void getAllProjects_returnsProjectResponses() {
         ProjectService projectService = new ProjectService(projectRepository);
         UUID firstId = UUID.randomUUID();
@@ -150,6 +180,34 @@ class ProjectServiceTest {
     }
 
     @Test
+    void getProjectsForUser_returnsOnlyProjectsOwnedByUser() {
+        ProjectService projectService = new ProjectService(projectRepository);
+        UUID ownerUserId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-14T12:00:00Z");
+        Project project = projectWithGeneratedFields(
+                projectId,
+                "Owned App",
+                "https://github.com/example/owned",
+                "main",
+                null,
+                null,
+                null,
+                ownerUserId,
+                createdAt
+        );
+
+        when(projectRepository.findByOwnerUserId(ownerUserId)).thenReturn(List.of(project));
+
+        List<ProjectResponse> responses = projectService.getProjectsForUser(ownerUserId);
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.getFirst().id()).isEqualTo(projectId);
+        assertThat(responses.getFirst().ownerUserId()).isEqualTo(ownerUserId);
+        verify(projectRepository).findByOwnerUserId(ownerUserId);
+    }
+
+    @Test
     void getProjectOrThrow_returnsProjectWhenFound() {
         ProjectService projectService = new ProjectService(projectRepository);
         UUID projectId = UUID.randomUUID();
@@ -180,6 +238,39 @@ class ProjectServiceTest {
         verify(projectRepository).findById(projectId);
     }
 
+    @Test
+    void getProjectForUserOrThrow_returnsProjectWhenProjectBelongsToUser() {
+        ProjectService projectService = new ProjectService(projectRepository);
+        UUID projectId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+        Project project = new Project(
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main"
+        );
+
+        when(projectRepository.findByIdAndOwnerUserId(projectId, ownerUserId)).thenReturn(Optional.of(project));
+
+        Project result = projectService.getProjectForUserOrThrow(projectId, ownerUserId);
+
+        assertThat(result).isSameAs(project);
+        verify(projectRepository).findByIdAndOwnerUserId(projectId, ownerUserId);
+    }
+
+    @Test
+    void getProjectForUserOrThrow_throwsWhenProjectDoesNotBelongToUser() {
+        ProjectService projectService = new ProjectService(projectRepository);
+        UUID projectId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+
+        when(projectRepository.findByIdAndOwnerUserId(projectId, ownerUserId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> projectService.getProjectForUserOrThrow(projectId, ownerUserId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Project not found");
+        verify(projectRepository).findByIdAndOwnerUserId(projectId, ownerUserId);
+    }
+
     private static Project projectWithGeneratedFields(
             UUID id,
             String name,
@@ -190,13 +281,38 @@ class ProjectServiceTest {
             String healthCheckPath,
             Instant createdAt
     ) {
+        return projectWithGeneratedFields(
+                id,
+                name,
+                repositoryUrl,
+                branch,
+                dockerfilePath,
+                containerPort,
+                healthCheckPath,
+                null,
+                createdAt
+        );
+    }
+
+    private static Project projectWithGeneratedFields(
+            UUID id,
+            String name,
+            String repositoryUrl,
+            String branch,
+            String dockerfilePath,
+            Integer containerPort,
+            String healthCheckPath,
+            UUID ownerUserId,
+            Instant createdAt
+    ) {
         Project project = new Project(
                 name,
                 repositoryUrl,
                 branch,
                 dockerfilePath,
                 containerPort,
-                healthCheckPath
+                healthCheckPath,
+                ownerUserId
         );
         ReflectionTestUtils.setField(project, "id", id);
         ReflectionTestUtils.setField(project, "createdAt", createdAt);

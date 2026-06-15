@@ -39,7 +39,15 @@ public class DeploymentService {
     public DeploymentResponse triggerDeployment(TriggerDeploymentRequest request) {
         //Verify project exists
         projectService.getProjectOrThrow(request.projectId());
+        return triggerDeploymentAfterProjectCheck(request);
+    }
 
+    public DeploymentResponse triggerDeployment(TriggerDeploymentRequest request, UUID currentUserId) {
+        projectService.getProjectForUserOrThrow(request.projectId(), currentUserId);
+        return triggerDeploymentAfterProjectCheck(request);
+    }
+
+    private DeploymentResponse triggerDeploymentAfterProjectCheck(TriggerDeploymentRequest request) {
         //create new deployment and save it to the database
         Deployment deployment = new Deployment(request.projectId());
         Deployment savedDeployment = deploymentRepository.save(deployment);
@@ -55,8 +63,23 @@ public class DeploymentService {
         return toResponse(deployment);
     }
 
+    public DeploymentResponse getDeploymentOrThrow(UUID deploymentId, UUID currentUserId) {
+        Deployment deployment = getDeploymentEntityForUserOrThrow(deploymentId, currentUserId);
+        return toResponse(deployment);
+    }
+
     public List<DeploymentResponse> getDeploymentsForProject(UUID projectId) {
         projectService.getProjectOrThrow(projectId);
+        List<Deployment> deployments = deploymentRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
+        List<DeploymentResponse> responses = new ArrayList<>();
+        for (Deployment deployment : deployments) {
+            responses.add(toResponse(deployment));
+        }
+        return responses;
+    }
+
+    public List<DeploymentResponse> getDeploymentsForProject(UUID projectId, UUID currentUserId) {
+        projectService.getProjectForUserOrThrow(projectId, currentUserId);
         List<Deployment> deployments = deploymentRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
         List<DeploymentResponse> responses = new ArrayList<>();
         for (Deployment deployment : deployments) {
@@ -68,7 +91,15 @@ public class DeploymentService {
     public DeploymentResponse stopDeployment(UUID deploymentId) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment not found"));
+        return stopDeploymentAfterOwnershipCheck(deploymentId, deployment);
+    }
 
+    public DeploymentResponse stopDeployment(UUID deploymentId, UUID currentUserId) {
+        Deployment deployment = getDeploymentEntityForUserOrThrow(deploymentId, currentUserId);
+        return stopDeploymentAfterOwnershipCheck(deploymentId, deployment);
+    }
+
+    private DeploymentResponse stopDeploymentAfterOwnershipCheck(UUID deploymentId, Deployment deployment) {
         if (deployment.getStatus() == DeploymentStatus.STOPPED) {
             throw new ResourceConflictException("Deployment is already stopped");
         }
@@ -86,6 +117,14 @@ public class DeploymentService {
         deploymentLogService.appendLog(deploymentId, "Deployment stopped");
 
         return toResponse(savedDeployment);
+    }
+
+    Deployment getDeploymentEntityForUserOrThrow(UUID deploymentId, UUID currentUserId) {
+        Deployment deployment = deploymentRepository.findById(deploymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment not found"));
+
+        projectService.getProjectForUserOrThrow(deployment.getProjectId(), currentUserId);
+        return deployment;
     }
 
     private DeploymentResponse toResponse(Deployment deployment) {

@@ -116,6 +116,49 @@ class ProjectEnvironmentVariableServiceTest {
     }
 
     @Test
+    void addEnvVarWithCurrentUser_checksProjectOwnershipBeforeSaving() {
+        // Arrange
+        UUID projectId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        AddProjectEnvironmentVariableRequest request =
+                new AddProjectEnvironmentVariableRequest("DB_PASSWORD", "secret");
+        ProjectEnvironmentVariableService service = service();
+
+        when(environmentVariableRepository.existsByProjectIdAndKey(projectId, "DB_PASSWORD")).thenReturn(false);
+        when(encryptionService.encrypt("secret")).thenReturn("v1:ciphertext");
+        when(environmentVariableRepository.save(any(ProjectEnvironmentVariable.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        service.addEnvVar(projectId, request, currentUserId);
+
+        // Assert
+        verify(projectService).getProjectForUserOrThrow(projectId, currentUserId);
+        verify(environmentVariableRepository).save(any(ProjectEnvironmentVariable.class));
+    }
+
+    @Test
+    void addEnvVarWithCurrentUser_throwsWhenProjectDoesNotBelongToUser() {
+        // Arrange
+        UUID projectId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        AddProjectEnvironmentVariableRequest request =
+                new AddProjectEnvironmentVariableRequest("DB_PASSWORD", "secret");
+        ProjectEnvironmentVariableService service = service();
+
+        when(projectService.getProjectForUserOrThrow(projectId, currentUserId))
+                .thenThrow(new ResourceNotFoundException("Project not found"));
+
+        // Act + Assert
+        assertThatThrownBy(() -> service.addEnvVar(projectId, request, currentUserId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Project not found");
+
+        verify(environmentVariableRepository, never()).existsByProjectIdAndKey(any(UUID.class), any(String.class));
+        verify(environmentVariableRepository, never()).save(any(ProjectEnvironmentVariable.class));
+    }
+
+    @Test
     void listEnvVars_returnsMetadataOnly() {
         // Arrange
         UUID projectId = UUID.randomUUID();
@@ -142,6 +185,24 @@ class ProjectEnvironmentVariableServiceTest {
     }
 
     @Test
+    void listEnvVarsWithCurrentUser_checksProjectOwnership() {
+        // Arrange
+        UUID projectId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        ProjectEnvironmentVariableService service = service();
+
+        when(environmentVariableRepository.findByProjectIdOrderByCreatedAtAsc(projectId))
+                .thenReturn(List.of());
+
+        // Act
+        List<ProjectEnvironmentVariableResponse> responses = service.listEnvVars(projectId, currentUserId);
+
+        // Assert
+        assertThat(responses).isEmpty();
+        verify(projectService).getProjectForUserOrThrow(projectId, currentUserId);
+    }
+
+    @Test
     void deleteEnvVar_deletesProjectScopedEnvironmentVariable() {
         // Arrange
         UUID projectId = UUID.randomUUID();
@@ -158,6 +219,27 @@ class ProjectEnvironmentVariableServiceTest {
 
         // Assert
         verify(projectService).getProjectOrThrow(projectId);
+        verify(environmentVariableRepository).delete(environmentVariable);
+    }
+
+    @Test
+    void deleteEnvVarWithCurrentUser_checksProjectOwnershipBeforeDeleting() {
+        // Arrange
+        UUID projectId = UUID.randomUUID();
+        UUID envId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        ProjectEnvironmentVariable environmentVariable =
+                environmentVariable(projectId, envId, "DB_PASSWORD", "v1:ciphertext", Instant.now());
+        ProjectEnvironmentVariableService service = service();
+
+        when(environmentVariableRepository.findByIdAndProjectId(envId, projectId))
+                .thenReturn(Optional.of(environmentVariable));
+
+        // Act
+        service.deleteEnvVar(projectId, envId, currentUserId);
+
+        // Assert
+        verify(projectService).getProjectForUserOrThrow(projectId, currentUserId);
         verify(environmentVariableRepository).delete(environmentVariable);
     }
 

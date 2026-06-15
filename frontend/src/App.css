@@ -6,6 +6,71 @@
   position: relative;
 }
 
+.login-shell {
+  align-items: center;
+  background: #f4f6f8;
+  color: #1f2933;
+  display: flex;
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.login-panel {
+  background: #ffffff;
+  border: 1px solid #d9e0e7;
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(16, 24, 40, 0.12);
+  display: grid;
+  gap: 28px;
+  margin: 0 auto;
+  max-width: 440px;
+  padding: 28px;
+  width: 100%;
+}
+
+.login-brand .brand-mark {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.login-brand h1 {
+  color: #17212b;
+}
+
+.login-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.login-copy h2 {
+  color: #17212b;
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.login-copy p:last-child {
+  color: #52606d;
+  font-size: 15px;
+}
+
+.github-login-action {
+  align-items: center;
+  background: #101820;
+  border-radius: 8px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 15px;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  text-decoration: none;
+}
+
+.github-login-action:hover {
+  background: #20303d;
+}
+
 .sidebar {
   background: #101820;
   color: #f5f7fa;
@@ -91,6 +156,14 @@
   margin-bottom: 24px;
 }
 
+.topbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .eyebrow {
   color: #64748b;
   font-size: 12px;
@@ -117,6 +190,21 @@
   font-size: 13px;
   font-weight: 800;
   padding: 8px 12px;
+}
+
+.user-pill {
+  background: #ffffff;
+  border: 1px solid #cbd5df;
+  border-radius: 999px;
+  color: #334155;
+  flex: 0 1 auto;
+  font-size: 13px;
+  font-weight: 800;
+  max-width: 220px;
+  overflow: hidden;
+  padding: 8px 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-pill.ready {

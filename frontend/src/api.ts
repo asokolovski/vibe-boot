@@ -60,6 +60,16 @@ export type DeploymentLogResponse = {
   createdAt: string
 }
 
+export type CurrentUserResponse = {
+  authenticated: boolean
+  id: string
+  githubId: number
+  githubUsername: string
+  name: string | null
+  email: string | null
+  avatarUrl: string | null
+}
+
 type ApiErrorResponse = {
   message?: unknown
 }
@@ -96,6 +106,7 @@ async function readErrorMessage(response: Response) {
 async function request<T>(path: string, options: RequestOptions = {}) {
   const response = await fetch(path, {
     method: options.method ?? 'GET',
+    credentials: 'same-origin',
     headers: options.body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   })
@@ -113,6 +124,16 @@ async function request<T>(path: string, options: RequestOptions = {}) {
 
 export function getProjects() {
   return request<ProjectResponse[]>('/api/projects')
+}
+
+export function getCurrentUser() {
+  return request<CurrentUserResponse>('/api/me')
+}
+
+export function logout() {
+  return request<void>('/auth/logout', {
+    method: 'POST',
+  })
 }
 
 export function createProject(project: CreateProjectRequest) {

@@ -2,6 +2,7 @@ package com.alexeisoki.vibeboot.project;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -21,8 +22,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.alexeisoki.vibeboot.auth.AuthController;
 import com.alexeisoki.vibeboot.deployment.DeploymentService;
 import com.alexeisoki.vibeboot.deployment.DeploymentStatus;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
@@ -35,6 +38,7 @@ import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @WebMvcTest(ProjectController.class)
 class ProjectControllerTest {
+    private static final UUID CURRENT_USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     @Autowired
     private MockMvc mockMvc;
@@ -60,9 +64,10 @@ class ProjectControllerTest {
                 }
                 """;
 
-        when(projectService.createProject(any(CreateProjectRequest.class))).thenReturn(response);
+        when(projectService.createProject(any(CreateProjectRequest.class), eq(CURRENT_USER_ID))).thenReturn(response);
 
         mockMvc.perform(post("/api/projects")
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isCreated())
@@ -75,7 +80,7 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.healthCheckPath").value("/health"))
                 .andExpect(jsonPath("$.createdAt").value("2026-05-14T12:00:00Z"));
 
-        verify(projectService, times(1)).createProject(any(CreateProjectRequest.class));
+        verify(projectService, times(1)).createProject(any(CreateProjectRequest.class), eq(CURRENT_USER_ID));
     }
 
     @Test
@@ -89,13 +94,14 @@ class ProjectControllerTest {
                 """;
 
         mockMvc.perform(post("/api/projects")
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("name must not be blank")))
                 .andExpect(jsonPath("$.message", containsString("repositoryUrl must not be blank")));
 
-        verify(projectService, never()).createProject(any(CreateProjectRequest.class));
+        verify(projectService, never()).createProject(any(CreateProjectRequest.class), any(UUID.class));
     }
 
     @Test
@@ -108,12 +114,13 @@ class ProjectControllerTest {
                 """;
 
         mockMvc.perform(post("/api/projects")
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("repositoryUrl must be a public HTTPS GitHub repository URL")));
 
-        verify(projectService, never()).createProject(any(CreateProjectRequest.class));
+        verify(projectService, never()).createProject(any(CreateProjectRequest.class), any(UUID.class));
     }
 
     @Test
@@ -127,12 +134,13 @@ class ProjectControllerTest {
                 """;
 
         mockMvc.perform(post("/api/projects")
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("must be relative and stay inside the repository")));
 
-        verify(projectService, never()).createProject(any(CreateProjectRequest.class));
+        verify(projectService, never()).createProject(any(CreateProjectRequest.class), any(UUID.class));
     }
 
     @Test
@@ -146,12 +154,13 @@ class ProjectControllerTest {
                 """;
 
         mockMvc.perform(post("/api/projects")
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("containerPort must be less than or equal to 65535")));
 
-        verify(projectService, never()).createProject(any(CreateProjectRequest.class));
+        verify(projectService, never()).createProject(any(CreateProjectRequest.class), any(UUID.class));
     }
 
     @Test
@@ -165,12 +174,13 @@ class ProjectControllerTest {
                 """;
 
         mockMvc.perform(post("/api/projects")
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("must start with /")));
 
-        verify(projectService, never()).createProject(any(CreateProjectRequest.class));
+        verify(projectService, never()).createProject(any(CreateProjectRequest.class), any(UUID.class));
     }
 
     @Test
@@ -179,9 +189,10 @@ class ProjectControllerTest {
         Instant createdAt = Instant.parse("2026-05-14T12:00:00Z");
         ProjectResponse response = projectResponse(projectId, "vibe-payment-api", createdAt);
 
-        when(projectService.getAllProjects()).thenReturn(List.of(response));
+        when(projectService.getProjectsForUser(CURRENT_USER_ID)).thenReturn(List.of(response));
 
-        mockMvc.perform(get("/api/projects"))
+        mockMvc.perform(get("/api/projects")
+                        .session(authenticatedSession()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(projectId.toString()))
@@ -193,7 +204,7 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].healthCheckPath").value("/health"))
                 .andExpect(jsonPath("$[0].createdAt").value("2026-05-14T12:00:00Z"));
 
-        verify(projectService, times(1)).getAllProjects();
+        verify(projectService, times(1)).getProjectsForUser(CURRENT_USER_ID);
     }
 
     @Test
@@ -215,9 +226,10 @@ class ProjectControllerTest {
                 null
         );
 
-        when(deploymentService.getDeploymentsForProject(projectId)).thenReturn(List.of(response));
+        when(deploymentService.getDeploymentsForProject(projectId, CURRENT_USER_ID)).thenReturn(List.of(response));
 
-        mockMvc.perform(get("/api/projects/{projectId}/deployments", projectId))
+        mockMvc.perform(get("/api/projects/{projectId}/deployments", projectId)
+                        .session(authenticatedSession()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(deploymentId.toString()))
@@ -232,21 +244,22 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].containerPort").doesNotExist())
                 .andExpect(jsonPath("$[0].deploymentUrl").doesNotExist());
 
-        verify(deploymentService, times(1)).getDeploymentsForProject(projectId);
+        verify(deploymentService, times(1)).getDeploymentsForProject(projectId, CURRENT_USER_ID);
     }
 
     @Test
     void getDeploymentsForProject_returnsNotFoundWhenProjectIsMissing() throws Exception {
         UUID projectId = UUID.randomUUID();
 
-        when(deploymentService.getDeploymentsForProject(projectId))
+        when(deploymentService.getDeploymentsForProject(projectId, CURRENT_USER_ID))
                 .thenThrow(new ResourceNotFoundException("Project not found"));
 
-        mockMvc.perform(get("/api/projects/{projectId}/deployments", projectId))
+        mockMvc.perform(get("/api/projects/{projectId}/deployments", projectId)
+                        .session(authenticatedSession()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Project not found"));
 
-        verify(deploymentService, times(1)).getDeploymentsForProject(projectId);
+        verify(deploymentService, times(1)).getDeploymentsForProject(projectId, CURRENT_USER_ID);
     }
 
     @Test
@@ -267,10 +280,15 @@ class ProjectControllerTest {
                 }
                 """;
 
-        when(environmentVariableService.addEnvVar(any(UUID.class), any(AddProjectEnvironmentVariableRequest.class)))
+        when(environmentVariableService.addEnvVar(
+                any(UUID.class),
+                any(AddProjectEnvironmentVariableRequest.class),
+                eq(CURRENT_USER_ID)
+        ))
                 .thenReturn(response);
 
         mockMvc.perform(post("/api/projects/{projectId}/env", projectId)
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isCreated())
@@ -281,7 +299,11 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.value").doesNotExist())
                 .andExpect(jsonPath("$.valueEncrypted").doesNotExist());
 
-        verify(environmentVariableService).addEnvVar(any(UUID.class), any(AddProjectEnvironmentVariableRequest.class));
+        verify(environmentVariableService).addEnvVar(
+                any(UUID.class),
+                any(AddProjectEnvironmentVariableRequest.class),
+                eq(CURRENT_USER_ID)
+        );
     }
 
     @Test
@@ -295,13 +317,14 @@ class ProjectControllerTest {
                 """;
 
         mockMvc.perform(post("/api/projects/{projectId}/env", projectId)
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("key must match [A-Z_][A-Z0-9_]*")));
 
         verify(environmentVariableService, never())
-                .addEnvVar(any(UUID.class), any(AddProjectEnvironmentVariableRequest.class));
+                .addEnvVar(any(UUID.class), any(AddProjectEnvironmentVariableRequest.class), any(UUID.class));
     }
 
     @Test
@@ -314,10 +337,15 @@ class ProjectControllerTest {
                 }
                 """;
 
-        when(environmentVariableService.addEnvVar(any(UUID.class), any(AddProjectEnvironmentVariableRequest.class)))
+        when(environmentVariableService.addEnvVar(
+                any(UUID.class),
+                any(AddProjectEnvironmentVariableRequest.class),
+                eq(CURRENT_USER_ID)
+        ))
                 .thenThrow(new ResourceConflictException("Project environment variable key already exists"));
 
         mockMvc.perform(post("/api/projects/{projectId}/env", projectId)
+                        .session(authenticatedSession())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isConflict())
@@ -336,9 +364,10 @@ class ProjectControllerTest {
                 createdAt
         );
 
-        when(environmentVariableService.listEnvVars(projectId)).thenReturn(List.of(response));
+        when(environmentVariableService.listEnvVars(projectId, CURRENT_USER_ID)).thenReturn(List.of(response));
 
-        mockMvc.perform(get("/api/projects/{projectId}/env", projectId))
+        mockMvc.perform(get("/api/projects/{projectId}/env", projectId)
+                        .session(authenticatedSession()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(envId.toString()))
@@ -348,7 +377,7 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].value").doesNotExist())
                 .andExpect(jsonPath("$[0].valueEncrypted").doesNotExist());
 
-        verify(environmentVariableService).listEnvVars(projectId);
+        verify(environmentVariableService).listEnvVars(projectId, CURRENT_USER_ID);
     }
 
     @Test
@@ -356,10 +385,19 @@ class ProjectControllerTest {
         UUID projectId = UUID.randomUUID();
         UUID envId = UUID.randomUUID();
 
-        mockMvc.perform(delete("/api/projects/{projectId}/env/{envId}", projectId, envId))
+        mockMvc.perform(delete("/api/projects/{projectId}/env/{envId}", projectId, envId)
+                        .session(authenticatedSession()))
                 .andExpect(status().isNoContent());
 
-        verify(environmentVariableService).deleteEnvVar(projectId, envId);
+        verify(environmentVariableService).deleteEnvVar(projectId, envId, CURRENT_USER_ID);
+    }
+
+    @Test
+    void getAllProjects_returnsUnauthorizedWhenUserIsNotLoggedIn() throws Exception {
+        mockMvc.perform(get("/api/projects"))
+                .andExpect(status().isUnauthorized());
+
+        verify(projectService, never()).getProjectsForUser(any(UUID.class));
     }
 
     private static ProjectResponse projectResponse(UUID projectId, String name, Instant createdAt) {
@@ -371,7 +409,14 @@ class ProjectControllerTest {
                 "Dockerfile",
                 8080,
                 "/health",
+                null,
                 createdAt
         );
+    }
+
+    private static MockHttpSession authenticatedSession() {
+        MockHttpSession session = new MockHttpSession();
+        session.setAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE, CURRENT_USER_ID);
+        return session;
     }
 }

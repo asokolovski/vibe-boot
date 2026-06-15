@@ -39,6 +39,22 @@ public class ProjectEnvironmentVariableService {
             AddProjectEnvironmentVariableRequest request
     ) {
         projectService.getProjectOrThrow(projectId);
+        return addEnvVarAfterProjectCheck(projectId, request);
+    }
+
+    public ProjectEnvironmentVariableResponse addEnvVar(
+            UUID projectId,
+            AddProjectEnvironmentVariableRequest request,
+            UUID currentUserId
+    ) {
+        projectService.getProjectForUserOrThrow(projectId, currentUserId);
+        return addEnvVarAfterProjectCheck(projectId, request);
+    }
+
+    private ProjectEnvironmentVariableResponse addEnvVarAfterProjectCheck(
+            UUID projectId,
+            AddProjectEnvironmentVariableRequest request
+    ) {
         validateEnvVarRequest(request);
 
         if (environmentVariableRepository.existsByProjectIdAndKey(projectId, request.key())) {
@@ -60,7 +76,15 @@ public class ProjectEnvironmentVariableService {
 
     public List<ProjectEnvironmentVariableResponse> listEnvVars(UUID projectId) {
         projectService.getProjectOrThrow(projectId);
+        return listEnvVarsAfterProjectCheck(projectId);
+    }
 
+    public List<ProjectEnvironmentVariableResponse> listEnvVars(UUID projectId, UUID currentUserId) {
+        projectService.getProjectForUserOrThrow(projectId, currentUserId);
+        return listEnvVarsAfterProjectCheck(projectId);
+    }
+
+    private List<ProjectEnvironmentVariableResponse> listEnvVarsAfterProjectCheck(UUID projectId) {
         List<ProjectEnvironmentVariable> environmentVariables =
                 environmentVariableRepository.findByProjectIdOrderByCreatedAtAsc(projectId);
         List<ProjectEnvironmentVariableResponse> responses = new ArrayList<>();
@@ -73,7 +97,15 @@ public class ProjectEnvironmentVariableService {
 
     public void deleteEnvVar(UUID projectId, UUID envId) {
         projectService.getProjectOrThrow(projectId);
+        deleteEnvVarAfterProjectCheck(projectId, envId);
+    }
 
+    public void deleteEnvVar(UUID projectId, UUID envId, UUID currentUserId) {
+        projectService.getProjectForUserOrThrow(projectId, currentUserId);
+        deleteEnvVarAfterProjectCheck(projectId, envId);
+    }
+
+    private void deleteEnvVarAfterProjectCheck(UUID projectId, UUID envId) {
         ProjectEnvironmentVariable environmentVariable = environmentVariableRepository.findByIdAndProjectId(envId, projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project environment variable not found"));
 

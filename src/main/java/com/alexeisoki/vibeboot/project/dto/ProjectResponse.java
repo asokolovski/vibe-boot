@@ -11,6 +11,7 @@ public record ProjectResponse(
         String dockerfilePath,
         Integer containerPort,
         String healthCheckPath,
+        UUID ownerUserId,
         Instant createdAt
 ) {
 }

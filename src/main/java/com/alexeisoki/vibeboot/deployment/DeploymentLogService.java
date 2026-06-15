@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
+import com.alexeisoki.vibeboot.project.ProjectService;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @Service
@@ -14,13 +15,16 @@ public class DeploymentLogService {
 
     private final DeploymentLogRepository deploymentLogRepository;
     private final DeploymentRepository deploymentRepository;
+    private final ProjectService projectService;
 
     public DeploymentLogService(
             DeploymentLogRepository deploymentLogRepository,
-            DeploymentRepository deploymentRepository
+            DeploymentRepository deploymentRepository,
+            ProjectService projectService
     ) {
         this.deploymentLogRepository = deploymentLogRepository;
         this.deploymentRepository = deploymentRepository;
+        this.projectService = projectService;
     }
 
     public void appendLog(UUID deploymentId, String message) {
@@ -30,7 +34,15 @@ public class DeploymentLogService {
 
     public List<DeploymentLogResponse> getLogs(UUID deploymentId) {
         verifyDeploymentExists(deploymentId);
+        return getLogsAfterDeploymentCheck(deploymentId);
+    }
 
+    public List<DeploymentLogResponse> getLogs(UUID deploymentId, UUID currentUserId) {
+        verifyDeploymentBelongsToUser(deploymentId, currentUserId);
+        return getLogsAfterDeploymentCheck(deploymentId);
+    }
+
+    private List<DeploymentLogResponse> getLogsAfterDeploymentCheck(UUID deploymentId) {
         List<DeploymentLog> logs = deploymentLogRepository.findByDeploymentIdOrderByCreatedAtAsc(deploymentId);
         List<DeploymentLogResponse> responses = new ArrayList<>();
         for (DeploymentLog log : logs) {
@@ -43,6 +55,13 @@ public class DeploymentLogService {
         if (!deploymentRepository.existsById(deploymentId)) {
             throw new ResourceNotFoundException("Deployment not found");
         }
+    }
+
+    private void verifyDeploymentBelongsToUser(UUID deploymentId, UUID currentUserId) {
+        Deployment deployment = deploymentRepository.findById(deploymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Deployment not found"));
+
+        projectService.getProjectForUserOrThrow(deployment.getProjectId(), currentUserId);
     }
 
     private DeploymentLogResponse toResponse(DeploymentLog log) {

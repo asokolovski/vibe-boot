@@ -20,8 +20,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseCookie;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -29,10 +31,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.client.RestTestClient;
+import org.springframework.test.web.servlet.client.EntityExchangeResult;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+import com.alexeisoki.vibeboot.auth.AuthController;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
@@ -52,6 +59,8 @@ import com.alexeisoki.vibeboot.project.dto.AddProjectEnvironmentVariableRequest;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
 import com.alexeisoki.vibeboot.project.dto.ProjectResponse;
 
+import jakarta.servlet.http.HttpSession;
+
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureRestTestClient
 @ActiveProfiles("test")
@@ -70,6 +79,7 @@ class DeploymentWorkflowE2ETest {
             };
 
     private final RestTestClient restTestClient;
+    private RestTestClient authenticatedRestTestClient;
 
     @Autowired
     private DockerService dockerService;
@@ -79,12 +89,28 @@ class DeploymentWorkflowE2ETest {
         this.restTestClient = restTestClient;
     }
 
+    @BeforeEach
+    void login() {
+        EntityExchangeResult<Void> result = restTestClient.post()
+                .uri("/test/login")
+                .exchange()
+                .expectStatus().isNoContent()
+                .expectBody(Void.class)
+                .returnResult();
+        ResponseCookie sessionCookie = result.getResponseCookies().getFirst("JSESSIONID");
+
+        assertThat(sessionCookie).isNotNull();
+        authenticatedRestTestClient = restTestClient.mutate()
+                .defaultCookie("JSESSIONID", sessionCookie.getValue())
+                .build();
+    }
+
     @Test
     void deploymentWorkflow_runsEndToEndOverHttp() {
         ProjectResponse project = createProject("vibe-payment-api");
         addEnvVar(project.id());
 
-        List<ProjectResponse> projects = restTestClient.get()
+        List<ProjectResponse> projects = api().get()
                 .uri("/api/projects")
                 .exchange()
                 .expectStatus().isOk()
@@ -97,7 +123,7 @@ class DeploymentWorkflowE2ETest {
                 .extracting(ProjectResponse::id)
                 .contains(project.id());
 
-        DeploymentResponse queuedDeployment = restTestClient.post()
+        DeploymentResponse queuedDeployment = api().post()
                 .uri("/api/deployments")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new TriggerDeploymentRequest(project.id()))
@@ -159,7 +185,7 @@ class DeploymentWorkflowE2ETest {
                 eq(Map.of("API_KEY", "secret"))
         );
 
-        List<DeploymentResponse> deploymentHistory = restTestClient.get()
+        List<DeploymentResponse> deploymentHistory = api().get()
                 .uri("/api/projects/{projectId}/deployments", project.id())
                 .exchange()
                 .expectStatus().isOk()
@@ -203,7 +229,7 @@ class DeploymentWorkflowE2ETest {
                             );
                 });
 
-        DeploymentResponse stoppedDeployment = restTestClient.post()
+        DeploymentResponse stoppedDeployment = api().post()
                 .uri("/api/deployments/{deploymentId}/stop", queuedDeployment.id())
                 .exchange()
                 .expectStatus().isOk()
@@ -232,7 +258,7 @@ class DeploymentWorkflowE2ETest {
     void deploymentHistory_returnsEmptyListForProjectWithNoDeployments() {
         ProjectResponse project = createProject("quiet-api");
 
-        List<DeploymentResponse> deploymentHistory = restTestClient.get()
+        List<DeploymentResponse> deploymentHistory = api().get()
                 .uri("/api/projects/{projectId}/deployments", project.id())
                 .exchange()
                 .expectStatus().isOk()
@@ -246,7 +272,7 @@ class DeploymentWorkflowE2ETest {
     }
 
     private ProjectResponse createProject(String name) {
-        ProjectResponse project = restTestClient.post()
+        ProjectResponse project = api().post()
                 .uri("/api/projects")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new CreateProjectRequest(name, "https://github.com/alexeisoki/" + name))
@@ -268,7 +294,7 @@ class DeploymentWorkflowE2ETest {
     }
 
     private void addEnvVar(UUID projectId) {
-        restTestClient.post()
+        api().post()
                 .uri("/api/projects/{projectId}/env", projectId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new AddProjectEnvironmentVariableRequest("API_KEY", "secret"))
@@ -277,7 +303,7 @@ class DeploymentWorkflowE2ETest {
     }
 
     private DeploymentResponse getDeployment(DeploymentResponse deployment) {
-        DeploymentResponse response = restTestClient.get()
+        DeploymentResponse response = api().get()
                 .uri("/api/deployments/{deploymentId}", deployment.id())
                 .exchange()
                 .expectStatus().isOk()
@@ -290,7 +316,7 @@ class DeploymentWorkflowE2ETest {
     }
 
     private List<DeploymentLogResponse> getDeploymentLogs(DeploymentResponse deployment) {
-        List<DeploymentLogResponse> response = restTestClient.get()
+        List<DeploymentLogResponse> response = api().get()
                 .uri("/api/deployments/{deploymentId}/logs", deployment.id())
                 .exchange()
                 .expectStatus().isOk()
@@ -302,8 +328,17 @@ class DeploymentWorkflowE2ETest {
         return response;
     }
 
+    private RestTestClient api() {
+        return authenticatedRestTestClient;
+    }
+
     @TestConfiguration
     static class DeterministicDeploymentQueueConfig {
+
+        @Bean
+        TestLoginController testLoginController() {
+            return new TestLoginController();
+        }
 
         @Bean
         @Primary
@@ -405,6 +440,16 @@ class DeploymentWorkflowE2ETest {
                 return null;
             }).when(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
             return rabbitTemplate;
+        }
+    }
+
+    @RestController
+    static class TestLoginController {
+
+        @PostMapping("/test/login")
+        ResponseEntity<Void> login(HttpSession session) {
+            session.setAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE, UUID.randomUUID());
+            return ResponseEntity.noContent().build();
         }
     }
 }

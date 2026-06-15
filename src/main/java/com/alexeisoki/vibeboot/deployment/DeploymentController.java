@@ -15,7 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentLogResponse;
 import com.alexeisoki.vibeboot.deployment.dto.DeploymentResponse;
 import com.alexeisoki.vibeboot.deployment.dto.TriggerDeploymentRequest;
+import com.alexeisoki.vibeboot.auth.AuthController;
 
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 
 @RestController
@@ -33,24 +35,31 @@ public class DeploymentController {
     }
 
     @PostMapping
-    public ResponseEntity<DeploymentResponse> triggerDeployment(@Valid @RequestBody TriggerDeploymentRequest request) {
-        DeploymentResponse response = deploymentService.triggerDeployment(request);
+    public ResponseEntity<DeploymentResponse> triggerDeployment(
+            @Valid @RequestBody TriggerDeploymentRequest request,
+            HttpSession session
+    ) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        DeploymentResponse response = deploymentService.triggerDeployment(request, currentUserId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/{deploymentId}")
-    public DeploymentResponse getDeployment(@PathVariable UUID deploymentId) {
-        return deploymentService.getDeploymentOrThrow(deploymentId);
+    public DeploymentResponse getDeployment(@PathVariable UUID deploymentId, HttpSession session) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        return deploymentService.getDeploymentOrThrow(deploymentId, currentUserId);
     }
 
     @PostMapping("/{deploymentId}/stop")
-    public DeploymentResponse stopDeployment(@PathVariable UUID deploymentId) {
-        return deploymentService.stopDeployment(deploymentId);
+    public DeploymentResponse stopDeployment(@PathVariable UUID deploymentId, HttpSession session) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        return deploymentService.stopDeployment(deploymentId, currentUserId);
     }
 
     @GetMapping("/{deploymentId}/logs")
-    public List<DeploymentLogResponse> getDeploymentLogs(@PathVariable UUID deploymentId) {
-        return deploymentLogService.getLogs(deploymentId);
+    public List<DeploymentLogResponse> getDeploymentLogs(@PathVariable UUID deploymentId, HttpSession session) {
+        UUID currentUserId = (UUID) session.getAttribute(AuthController.USER_ID_SESSION_ATTRIBUTE);
+        return deploymentLogService.getLogs(deploymentId, currentUserId);
     }
 }
