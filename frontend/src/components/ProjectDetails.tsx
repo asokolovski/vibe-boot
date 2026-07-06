@@ -13,6 +13,8 @@ const formatDate = (value: string) =>
   }).format(new Date(value))
 
 function ProjectDetails({ project }: ProjectDetailsProps) {
+  const isContainerImageProject = project?.sourceType === 'CONTAINER_IMAGE'
+
   return (
     <section className="panel project-detail-panel">
       <div className="panel-header">
@@ -24,18 +26,27 @@ function ProjectDetails({ project }: ProjectDetailsProps) {
 
       {project ? (
         <dl className="detail-grid">
-          <div>
-            <dt>Repository</dt>
-            <dd>{project.repositoryUrl}</dd>
-          </div>
-          <div>
-            <dt>Branch</dt>
-            <dd>{project.branch}</dd>
-          </div>
-          <div>
-            <dt>Dockerfile</dt>
-            <dd>{project.dockerfilePath}</dd>
-          </div>
+          {isContainerImageProject ? (
+            <div>
+              <dt>Container Registry</dt>
+              <dd>{project.containerRegistry}</dd>
+            </div>
+          ) : (
+            <>
+              <div>
+                <dt>Repository</dt>
+                <dd>{project.repositoryUrl}</dd>
+              </div>
+              <div>
+                <dt>Branch</dt>
+                <dd>{project.branch}</dd>
+              </div>
+              <div>
+                <dt>Dockerfile</dt>
+                <dd>{project.dockerfilePath}</dd>
+              </div>
+            </>
+          )}
           <div>
             <dt>Container Port</dt>
             <dd>{project.containerPort}</dd>

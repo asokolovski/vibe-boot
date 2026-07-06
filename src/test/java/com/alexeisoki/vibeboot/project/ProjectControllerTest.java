@@ -99,7 +99,7 @@ class ProjectControllerTest {
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("name must not be blank")))
-                .andExpect(jsonPath("$.message", containsString("repositoryUrl must not be blank")));
+                .andExpect(jsonPath("$.message", containsString("repositoryUrl must be a public HTTPS GitHub repository URL")));
 
         verify(projectService, never()).createProject(any(CreateProjectRequest.class), any(UUID.class));
     }
@@ -405,6 +405,8 @@ class ProjectControllerTest {
                 projectId,
                 name,
                 "https://github.com/alexeisoko/payment-api",
+                ProjectSourceType.GITHUB_REPOSITORY,
+                null,
                 "main",
                 "Dockerfile",
                 8080,

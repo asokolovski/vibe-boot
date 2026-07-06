@@ -48,6 +48,9 @@ public class Deployment {
     private String imageName;
 
     @Column(nullable = true)
+    private String imageTag;
+
+    @Column(nullable = true)
     private String containerId;
 
     @Column(nullable = true)
@@ -63,8 +66,13 @@ public class Deployment {
     }
 
     public Deployment(UUID projectId) {
+        this(projectId, null);
+    }
+
+    public Deployment(UUID projectId, String imageTag) {
         this.projectId = projectId;
         this.status = DeploymentStatus.QUEUED;
+        this.imageTag = blankToNull(imageTag);
     }
 
     public void markRunning() {
@@ -143,6 +151,10 @@ public class Deployment {
         return imageName;
     }
 
+    public String getImageTag() {
+        return imageTag;
+    }
+
     public String getContainerId() {
         return containerId;
     }
@@ -157,5 +169,9 @@ public class Deployment {
 
     public String getDeploymentUrl() {
         return deploymentUrl;
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

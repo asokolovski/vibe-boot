@@ -21,6 +21,7 @@ import com.alexeisoki.vibeboot.deployment.runtime.WorkspaceService;
 import com.alexeisoki.vibeboot.project.Project;
 import com.alexeisoki.vibeboot.project.ProjectEnvironmentVariableService;
 import com.alexeisoki.vibeboot.project.ProjectService;
+import com.alexeisoki.vibeboot.project.ProjectSourceType;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @Component
@@ -85,10 +86,14 @@ public class DeploymentExecutor {
         Path workspace = null;
         try {
             Project project = projectService.getProjectOrThrow(deployment.getProjectId());
-            workspace = createWorkspace(deploymentId);
-            Path sourceDirectory = workspace.resolve("source");
-            cloneRepository(deploymentId, project, sourceDirectory);
-            buildDockerImage(deploymentId, deployment, project, sourceDirectory);
+            if (project.getSourceType() == ProjectSourceType.CONTAINER_IMAGE) {
+                pullDockerImage(deploymentId, deployment, project);
+            } else {
+                workspace = createWorkspace(deploymentId);
+                Path sourceDirectory = workspace.resolve("source");
+                cloneRepository(deploymentId, project, sourceDirectory);
+                buildDockerImage(deploymentId, deployment, project, sourceDirectory);
+            }
             int hostPort = allocateHostPort();
             Map<String, String> environmentVariables =
                     loadEnvironmentVariables(deploymentId, deployment.getProjectId());
@@ -131,6 +136,18 @@ public class DeploymentExecutor {
         deployment.recordDockerImage(buildResult.imageName());
         deploymentRepository.save(deployment);
         deploymentLogService.appendLog(deploymentId, "Docker image built: " + buildResult.imageName());
+    }
+
+    private void pullDockerImage(UUID deploymentId, Deployment deployment, Project project) {
+        String imageName = imageNameForContainerProject(deployment, project);
+        deploymentLogService.appendLog(deploymentId, "Pulling Docker image: " + imageName);
+
+        String pullOutput = dockerService.pullImage(imageName);
+        appendCommandOutput(deploymentId, pullOutput);
+
+        deployment.recordDockerImage(imageName);
+        deploymentRepository.save(deployment);
+        deploymentLogService.appendLog(deploymentId, "Docker image pulled: " + imageName);
     }
 
     private Map<String, String> loadEnvironmentVariables(UUID deploymentId, UUID projectId) {
@@ -286,6 +303,29 @@ public class DeploymentExecutor {
         return exception.getMessage() == null || exception.getMessage().isBlank()
                 ? exception.getClass().getSimpleName()
                 : exception.getMessage();
+    }
+
+    private String imageNameForContainerProject(Deployment deployment, Project project) {
+        String containerRegistry = project.getContainerRegistry();
+        if (containerRegistry == null || containerRegistry.isBlank()) {
+            throw new IllegalArgumentException("containerRegistry must not be blank");
+        }
+        String imagetag = defaultIfBlank(deployment.getImageTag(), "latest");
+        String colonOrAt = imagetag.startsWith("sha256:") ? "@" : ":"; 
+
+        return stripTrailingSlash(containerRegistry) + colonOrAt + imagetag;
+    }
+
+    private String stripTrailingSlash(String value) {
+        String strippedValue = value;
+        while (strippedValue.endsWith("/")) {
+            strippedValue = strippedValue.substring(0, strippedValue.length() - 1);
+        }
+        return strippedValue;
+    }
+
+    private String defaultIfBlank(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
     }
 
     private void appendCommandOutput(UUID deploymentId, String output) {

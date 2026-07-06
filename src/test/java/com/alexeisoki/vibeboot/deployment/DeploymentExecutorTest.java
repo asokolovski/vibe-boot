@@ -41,6 +41,7 @@ import com.alexeisoki.vibeboot.deployment.runtime.WorkspaceServiceException;
 import com.alexeisoki.vibeboot.project.Project;
 import com.alexeisoki.vibeboot.project.ProjectEnvironmentVariableService;
 import com.alexeisoki.vibeboot.project.ProjectService;
+import com.alexeisoki.vibeboot.project.ProjectSourceType;
 import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 
 @ExtendWith(MockitoExtension.class)
@@ -144,6 +145,42 @@ class DeploymentExecutorTest {
         logOrder.verify(deploymentLogService).appendLog(deploymentId, "Health check succeeded after 2 attempt(s)");
         logOrder.verify(deploymentLogService).appendLog(deploymentId, "Deployment succeeded");
         logOrder.verify(deploymentLogService).appendLog(deploymentId, "Workspace cleaned up");
+    }
+
+    @Test
+    void execute_pullsRegistryImageRunsHealthCheckAndSkipsWorkspace() {
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = new Deployment(UUID.randomUUID(), "sha-4a928d5");
+        Project project = containerImageProject();
+        String imageName = "ghcr.io/asokolovski/vb-gha-demo-app:sha-4a928d5";
+        DeploymentExecutor deploymentExecutor = deploymentExecutor();
+
+        stubRunningDeployment(deploymentId, deployment, project);
+        when(dockerService.pullImage(imageName)).thenReturn("pull ok");
+        when(environmentVariableService.getDecryptedEnvVarsForProject(deployment.getProjectId())).thenReturn(Map.of());
+        when(portAllocator.allocatePort()).thenReturn(49152);
+        when(dockerService.runContainer(deploymentId, project, imageName, 49152, Map.of()))
+                .thenReturn(new DockerRunResult("abc123", 49152, 80, "http://localhost:49152"));
+        when(healthCheckService.waitUntilHealthy("http://localhost:49152", "/"))
+                .thenReturn(new HealthCheckResult(
+                        true,
+                        URI.create("http://localhost:49152/"),
+                        1,
+                        "Health check succeeded"
+                ));
+
+        deploymentExecutor.execute(deploymentId);
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.SUCCESS);
+        assertThat(deployment.getImageName()).isEqualTo(imageName);
+        assertThat(deployment.getContainerId()).isEqualTo("abc123");
+
+        verify(workspaceService, never()).createWorkspace(any(UUID.class));
+        verify(gitService, never()).cloneRepository(anyString(), anyString(), any(Path.class));
+        verify(dockerService, never()).buildImage(any(UUID.class), any(Project.class), any(Path.class));
+        verify(dockerService).pullImage(imageName);
+        verify(dockerService).runContainer(deploymentId, project, imageName, 49152, Map.of());
+        verify(healthCheckService).waitUntilHealthy("http://localhost:49152", "/");
     }
 
     @Test
@@ -378,6 +415,20 @@ class DeploymentExecutorTest {
                 "Dockerfile",
                 8080,
                 "/health"
+        );
+    }
+
+    private Project containerImageProject() {
+        return new Project(
+                "GHA Demo",
+                null,
+                null,
+                null,
+                80,
+                "/",
+                null,
+                ProjectSourceType.CONTAINER_IMAGE,
+                "ghcr.io/asokolovski/vb-gha-demo-app"
         );
     }
 }

@@ -28,6 +28,21 @@ class DockerServiceTest {
     private CommandRunner commandRunner;
 
     @Test
+    void pullImage_runsDockerPullAndReturnsOutput() {
+        DockerService dockerService = new DockerService(commandRunner);
+        String imageName = "ghcr.io/asokolovski/vb-gha-demo-app:sha-4a928d5";
+
+        when(commandRunner.run(
+                List.of("docker", "pull", imageName),
+                Duration.ofMinutes(5)
+        )).thenReturn(new CommandResult(0, "pull ok", "", false));
+
+        String output = dockerService.pullImage(imageName);
+
+        assertThat(output).isEqualTo("pull ok");
+    }
+
+    @Test
     void buildImage_runsDockerBuildAndReturnsImageName() {
         DockerService dockerService = new DockerService(commandRunner);
         Project project = project("Payment API");

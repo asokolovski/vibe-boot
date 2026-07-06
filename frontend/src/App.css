@@ -297,7 +297,8 @@
   font-weight: 800;
 }
 
-.field input {
+.field input,
+.field select {
   background: #ffffff;
   border: 1px solid #cbd5df;
   border-radius: 8px;
@@ -308,7 +309,8 @@
   width: 100%;
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   border-color: #2563eb;
   outline: 3px solid rgba(37, 99, 235, 0.16);
 }
@@ -536,6 +538,18 @@
 
 .deployment-error {
   margin-bottom: 12px;
+}
+
+.deployment-actions {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.deployment-tag-field {
+  width: min(220px, 100%);
 }
 
 .deployment-layout {

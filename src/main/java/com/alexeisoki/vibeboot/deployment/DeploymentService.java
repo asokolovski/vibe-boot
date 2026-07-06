@@ -49,7 +49,7 @@ public class DeploymentService {
 
     private DeploymentResponse triggerDeploymentAfterProjectCheck(TriggerDeploymentRequest request) {
         //create new deployment and save it to the database
-        Deployment deployment = new Deployment(request.projectId());
+        Deployment deployment = new Deployment(request.projectId(), request.imageTag());
         Deployment savedDeployment = deploymentRepository.save(deployment);
         deploymentQueuePublisher.publishDeploymentRequested(savedDeployment.getId());
 

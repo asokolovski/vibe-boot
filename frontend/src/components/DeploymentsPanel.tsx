@@ -5,12 +5,13 @@ import {
   stopDeployment,
   triggerDeployment,
   type DeploymentResponse,
+  type ProjectResponse,
 } from '../api'
 import type { LoadState } from '../types'
 
 type DeploymentsPanelProps = {
   onSelectedDeploymentChange: (deployment: DeploymentResponse | null) => void
-  projectId: string | null
+  project: ProjectResponse | null
   selectedDeploymentId: string | null
 }
 
@@ -40,19 +41,28 @@ const shortId = (value: string | null) => {
 const hasRunningContainer = (deployment: DeploymentResponse) =>
   Boolean(deployment.containerId) && deployment.status !== 'STOPPED'
 
+const optionalText = (value: string) => {
+  const trimmed = value.trim()
+
+  return trimmed === '' ? undefined : trimmed
+}
+
 function DeploymentsPanel({
   onSelectedDeploymentChange,
-  projectId,
+  project,
   selectedDeploymentId,
 }: DeploymentsPanelProps) {
   const [deployments, setDeployments] = useState<DeploymentResponse[]>([])
   const [loadState, setLoadState] = useState<LoadState>('ready')
   const [errorMessage, setErrorMessage] = useState('')
   const [isDeploying, setIsDeploying] = useState(false)
+  const [imageTag, setImageTag] = useState('')
   const [stoppingDeploymentId, setStoppingDeploymentId] = useState<string | null>(
     null,
   )
 
+  const projectId = project?.id ?? null
+  const isContainerImageProject = project?.sourceType === 'CONTAINER_IMAGE'
   const selectedDeployment =
     deployments.find((deployment) => deployment.id === selectedDeploymentId) ??
     null
@@ -98,6 +108,10 @@ function DeploymentsPanel({
       active = false
     }
   }, [onSelectedDeploymentChange, projectId])
+
+  useEffect(() => {
+    setImageTag('')
+  }, [projectId])
 
   useEffect(() => {
     if (
@@ -150,7 +164,10 @@ function DeploymentsPanel({
     setErrorMessage('')
 
     try {
-      const deployment = await triggerDeployment({ projectId })
+      const deployment = await triggerDeployment({
+        projectId,
+        imageTag: isContainerImageProject ? optionalText(imageTag) : undefined,
+      })
       await reloadDeployments(deployment.id)
     } catch (error) {
       setErrorMessage(
@@ -190,14 +207,27 @@ function DeploymentsPanel({
           <p className="eyebrow">Deployments</p>
           <h3>{deployments.length} runs</h3>
         </div>
-        <button
-          className="primary-action"
-          disabled={!projectId || isDeploying}
-          onClick={handleTriggerDeployment}
-          type="button"
-        >
-          {isDeploying ? 'Deploying' : 'Deploy'}
-        </button>
+        <div className="deployment-actions">
+          {isContainerImageProject ? (
+            <label className="field deployment-tag-field">
+              <span>Image Tag</span>
+              <input
+                onChange={(event) => setImageTag(event.target.value)}
+                placeholder="latest"
+                type="text"
+                value={imageTag}
+              />
+            </label>
+          ) : null}
+          <button
+            className="primary-action"
+            disabled={!projectId || isDeploying}
+            onClick={handleTriggerDeployment}
+            type="button"
+          >
+            {isDeploying ? 'Deploying' : 'Deploy'}
+          </button>
+        </div>
       </div>
 
       {errorMessage ? (

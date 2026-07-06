@@ -1,7 +1,11 @@
+export type ProjectSourceType = 'GITHUB_REPOSITORY' | 'CONTAINER_IMAGE'
+
 export type ProjectResponse = {
   id: string
   name: string
-  repositoryUrl: string
+  repositoryUrl: string | null
+  sourceType: ProjectSourceType
+  containerRegistry: string | null
   branch: string
   dockerfilePath: string
   containerPort: number
@@ -11,7 +15,9 @@ export type ProjectResponse = {
 
 export type CreateProjectRequest = {
   name: string
-  repositoryUrl: string
+  sourceType?: ProjectSourceType
+  repositoryUrl?: string
+  containerRegistry?: string
   branch?: string
   dockerfilePath?: string
   containerPort?: number
@@ -53,6 +59,7 @@ export type DeploymentResponse = {
 
 export type TriggerDeploymentRequest = {
   projectId: string
+  imageTag?: string
 }
 
 export type DeploymentLogResponse = {

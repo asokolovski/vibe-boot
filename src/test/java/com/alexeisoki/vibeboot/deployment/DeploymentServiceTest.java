@@ -102,6 +102,36 @@ class DeploymentServiceTest {
     }
 
     @Test
+    void triggerDeployment_storesRequestedImageTag() {
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
+        );
+        UUID projectId = UUID.randomUUID();
+        UUID deploymentId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
+        TriggerDeploymentRequest request = new TriggerDeploymentRequest(projectId, "sha-4a928d5");
+        Project project = new Project(
+                "Vibe Boot",
+                "https://github.com/alexeisoki/vibe-boot",
+                "main"
+        );
+        Deployment savedDeployment = deploymentWithGeneratedFields(deploymentId, projectId, createdAt);
+
+        when(projectService.getProjectOrThrow(projectId)).thenReturn(project);
+        when(deploymentRepository.save(any(Deployment.class))).thenReturn(savedDeployment);
+
+        deploymentService.triggerDeployment(request);
+
+        ArgumentCaptor<Deployment> deploymentCaptor = ArgumentCaptor.forClass(Deployment.class);
+        verify(deploymentRepository).save(deploymentCaptor.capture());
+        assertThat(deploymentCaptor.getValue().getImageTag()).isEqualTo("sha-4a928d5");
+    }
+
+    @Test
     void getDeploymentOrThrow_returnsDeploymentResponseWhenFound() {
         // Arrange
         DeploymentService deploymentService = new DeploymentService(

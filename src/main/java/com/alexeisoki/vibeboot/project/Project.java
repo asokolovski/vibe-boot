@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -32,9 +34,8 @@ public class Project {
     @Column(nullable = false)
     private String name;
 
-    // Validation protects our Java/API boundary, while nullable = false protects the database.
-    @NotBlank
-    @Column(nullable = false)
+    // Source-built projects use this. Registry-backed projects leave it null.
+    @Column(nullable = true)
     private String repositoryUrl;
 
     @NotBlank
@@ -52,6 +53,13 @@ public class Project {
 
     @Column(name = "owner_user_id", nullable = true)
     private UUID ownerUserId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = true)
+    private ProjectSourceType sourceType;
+
+    @Column(nullable = true)
+    private String containerRegistry;
 
     // Stored by JPA, but only set once when the entity is first inserted.
     @Column(nullable = false, updatable = false)
@@ -84,6 +92,20 @@ public class Project {
             String healthCheckPath,
             UUID ownerUserId
     ) {
+        this(name, repositoryUrl, branch, dockerfilePath, containerPort, healthCheckPath, ownerUserId, null, null);
+    }
+
+    public Project(
+            String name,
+            String repositoryUrl,
+            String branch,
+            String dockerfilePath,
+            Integer containerPort,
+            String healthCheckPath,
+            UUID ownerUserId,
+            ProjectSourceType sourceType,
+            String containerRegistry
+    ) {
         this.name = name;
         this.repositoryUrl = repositoryUrl;
         this.branch = defaultIfBlank(branch, DEFAULT_BRANCH);
@@ -91,6 +113,8 @@ public class Project {
         this.containerPort = containerPort != null ? containerPort : DEFAULT_CONTAINER_PORT;
         this.healthCheckPath = defaultIfBlank(healthCheckPath, DEFAULT_HEALTH_CHECK_PATH);
         this.ownerUserId = ownerUserId;
+        this.sourceType = sourceType;
+        this.containerRegistry = containerRegistry;
     }
 
     // @PrePersist runs right before JPA inserts this entity into the database.
@@ -135,6 +159,14 @@ public class Project {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public ProjectSourceType getSourceType() {
+        return sourceType != null ? sourceType : ProjectSourceType.GITHUB_REPOSITORY;
+    }
+
+    public String getContainerRegistry() {
+        return containerRegistry;
     }
 
     private String defaultIfBlank(String value, String defaultValue) {

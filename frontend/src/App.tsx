@@ -125,7 +125,7 @@ function Dashboard({
               <ProjectEnvironmentPanel projectId={selectedProject?.id ?? null} />
               <DeploymentsPanel
                 onSelectedDeploymentChange={setSelectedDeployment}
-                projectId={selectedProject?.id ?? null}
+                project={selectedProject}
                 selectedDeploymentId={selectedDeployment?.id ?? null}
               />
               <LogsPanel deployment={selectedDeployment} />

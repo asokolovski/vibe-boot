@@ -3,11 +3,14 @@ import {
   createProject,
   type CreateProjectRequest,
   type ProjectResponse,
+  type ProjectSourceType,
 } from '../api'
 
 type ProjectFormValues = {
   name: string
+  sourceType: ProjectSourceType
   repositoryUrl: string
+  containerRegistry: string
   branch: string
   dockerfilePath: string
   containerPort: string
@@ -21,7 +24,9 @@ type ProjectCreateFormProps = {
 
 const emptyProjectForm: ProjectFormValues = {
   name: '',
+  sourceType: 'GITHUB_REPOSITORY',
   repositoryUrl: '',
+  containerRegistry: '',
   branch: '',
   dockerfilePath: '',
   containerPort: '',
@@ -45,9 +50,23 @@ const buildCreateProjectRequest = (
 
   return {
     name: form.name.trim(),
-    repositoryUrl: form.repositoryUrl.trim(),
-    branch: optionalText(form.branch),
-    dockerfilePath: optionalText(form.dockerfilePath),
+    sourceType: form.sourceType,
+    repositoryUrl:
+      form.sourceType === 'GITHUB_REPOSITORY'
+        ? optionalText(form.repositoryUrl)
+        : undefined,
+    containerRegistry:
+      form.sourceType === 'CONTAINER_IMAGE'
+        ? optionalText(form.containerRegistry)
+        : undefined,
+    branch:
+      form.sourceType === 'GITHUB_REPOSITORY'
+        ? optionalText(form.branch)
+        : undefined,
+    dockerfilePath:
+      form.sourceType === 'GITHUB_REPOSITORY'
+        ? optionalText(form.dockerfilePath)
+        : undefined,
     containerPort:
       containerPort === undefined ? undefined : Number(containerPort),
     healthCheckPath: optionalText(form.healthCheckPath),
@@ -100,6 +119,8 @@ function ProjectCreateForm({
     }
   }
 
+  const isContainerImageProject = projectForm.sourceType === 'CONTAINER_IMAGE'
+
   return (
     <form className="create-project-form" onSubmit={handleCreateProject}>
       <label className="field full">
@@ -114,43 +135,77 @@ function ProjectCreateForm({
           value={projectForm.name}
         />
       </label>
+
       <label className="field full">
-        <span>Repository URL</span>
-        <input
-          name="repositoryUrl"
+        <span>Source</span>
+        <select
+          name="sourceType"
           onChange={(event) =>
             handleProjectFieldChange(event.target.name, event.target.value)
           }
-          placeholder="https://github.com/owner/repo"
-          required
-          type="url"
-          value={projectForm.repositoryUrl}
-        />
+          value={projectForm.sourceType}
+        >
+          <option value="GITHUB_REPOSITORY">GitHub repository</option>
+          <option value="CONTAINER_IMAGE">Container registry</option>
+        </select>
       </label>
-      <label className="field">
-        <span>Branch</span>
-        <input
-          name="branch"
-          onChange={(event) =>
-            handleProjectFieldChange(event.target.name, event.target.value)
-          }
-          placeholder="main"
-          type="text"
-          value={projectForm.branch}
-        />
-      </label>
-      <label className="field">
-        <span>Dockerfile</span>
-        <input
-          name="dockerfilePath"
-          onChange={(event) =>
-            handleProjectFieldChange(event.target.name, event.target.value)
-          }
-          placeholder="Dockerfile"
-          type="text"
-          value={projectForm.dockerfilePath}
-        />
-      </label>
+
+      {isContainerImageProject ? (
+        <label className="field full">
+          <span>Container Registry</span>
+          <input
+            name="containerRegistry"
+            onChange={(event) =>
+              handleProjectFieldChange(event.target.name, event.target.value)
+            }
+            placeholder="ghcr.io/owner/image"
+            required
+            type="text"
+            value={projectForm.containerRegistry}
+          />
+        </label>
+      ) : (
+        <>
+          <label className="field full">
+            <span>Repository URL</span>
+            <input
+              name="repositoryUrl"
+              onChange={(event) =>
+                handleProjectFieldChange(event.target.name, event.target.value)
+              }
+              placeholder="https://github.com/owner/repo"
+              required
+              type="url"
+              value={projectForm.repositoryUrl}
+            />
+          </label>
+          <label className="field">
+            <span>Branch</span>
+            <input
+              name="branch"
+              onChange={(event) =>
+                handleProjectFieldChange(event.target.name, event.target.value)
+              }
+              placeholder="main"
+              type="text"
+              value={projectForm.branch}
+            />
+          </label>
+          <label className="field">
+            <span>Dockerfile</span>
+            <input
+              name="dockerfilePath"
+              onChange={(event) =>
+                handleProjectFieldChange(event.target.name, event.target.value)
+              }
+              placeholder="Dockerfile"
+              type="text"
+              value={projectForm.dockerfilePath}
+            />
+          </label>
+        </>
+      )}
+
       <label className="field">
         <span>Port</span>
         <input
@@ -160,7 +215,7 @@ function ProjectCreateForm({
           onChange={(event) =>
             handleProjectFieldChange(event.target.name, event.target.value)
           }
-          placeholder="8080"
+          placeholder={isContainerImageProject ? '80' : '8080'}
           type="number"
           value={projectForm.containerPort}
         />
@@ -172,7 +227,7 @@ function ProjectCreateForm({
           onChange={(event) =>
             handleProjectFieldChange(event.target.name, event.target.value)
           }
-          placeholder="/health"
+          placeholder={isContainerImageProject ? '/' : '/health'}
           type="text"
           value={projectForm.healthCheckPath}
         />

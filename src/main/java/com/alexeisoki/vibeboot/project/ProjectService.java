@@ -26,12 +26,14 @@ public class ProjectService {
     public ProjectResponse createProject(CreateProjectRequest request, UUID currentUserId) {
         Project project = new Project(
                 request.name(),
-                request.repositoryUrl(),
+                repositoryUrlForPersistence(request),
                 request.branch(),
                 request.dockerfilePath(),
                 request.containerPort(),
                 request.healthCheckPath(),
-                currentUserId
+                currentUserId,
+                request.sourceType(),
+                request.containerRegistry()
         );
 
         Project savedProject = projectRepository.save(project);
@@ -78,6 +80,8 @@ public class ProjectService {
                 project.getId(),
                 project.getName(),
                 project.getRepositoryUrl(),
+                project.getSourceType(),
+                project.getContainerRegistry(),
                 project.getBranch(),
                 project.getDockerfilePath(),
                 project.getContainerPort(),
@@ -85,5 +89,30 @@ public class ProjectService {
                 project.getOwnerUserId(),
                 project.getCreatedAt()
         );
+    }
+
+    private String repositoryUrlForPersistence(CreateProjectRequest request) {
+        if (request.repositoryUrl() != null && !request.repositoryUrl().isBlank()) {
+            return request.repositoryUrl();
+        }
+
+        if (request.sourceType() == ProjectSourceType.CONTAINER_IMAGE) {
+            return repositoryUrlFromContainerRegistry(request.containerRegistry());
+        }
+
+        return request.repositoryUrl();
+    }
+
+    private String repositoryUrlFromContainerRegistry(String containerRegistry) {
+        if (containerRegistry == null || containerRegistry.isBlank()) {
+            return null;
+        }
+
+        String[] pathParts = containerRegistry.replaceFirst("^ghcr\\.io/", "").split("/");
+        if (pathParts.length >= 2) {
+            return "https://github.com/" + pathParts[0] + "/" + pathParts[1];
+        }
+
+        return "https://github.com/octocat/Hello-World";
     }
 }

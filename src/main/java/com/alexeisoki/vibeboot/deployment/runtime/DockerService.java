@@ -28,6 +28,18 @@ public class DockerService {
         this.commandRunner = commandRunner;
     }
 
+    public String pullImage(String imageName) {
+        validateText(imageName, "imageName");
+
+        CommandResult result = commandRunner.run(
+                List.of("docker", "pull", imageName),
+                BUILD_TIMEOUT
+        );
+
+        requireSuccess(result, "Docker image pull failed");
+        return combineOutput(result.stdout(), result.stderr());
+    }
+
     public DockerBuildResult buildImage(UUID deploymentId, Project project, Path projectDirectory) {
         validateDeploymentId(deploymentId);
         validateProject(project);

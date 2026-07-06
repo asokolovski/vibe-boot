@@ -36,24 +36,34 @@ function ProjectList({
 
   return (
     <div className="project-list">
-      {projects.map((project) => (
-        <button
-          className={
-            project.id === selectedProjectId
-              ? 'project-row selected'
-              : 'project-row'
-          }
-          key={project.id}
-          onClick={() => onSelectProject(project.id)}
-          type="button"
-        >
-          <span>
-            <strong>{project.name}</strong>
-            <small>{project.repositoryUrl}</small>
-          </span>
-          <span className="branch-label">{project.branch}</span>
-        </button>
-      ))}
+      {projects.map((project) => {
+        const isContainerImageProject = project.sourceType === 'CONTAINER_IMAGE'
+
+        return (
+          <button
+            className={
+              project.id === selectedProjectId
+                ? 'project-row selected'
+                : 'project-row'
+            }
+            key={project.id}
+            onClick={() => onSelectProject(project.id)}
+            type="button"
+          >
+            <span>
+              <strong>{project.name}</strong>
+              <small>
+                {isContainerImageProject
+                  ? project.containerRegistry
+                  : project.repositoryUrl}
+              </small>
+            </span>
+            <span className="branch-label">
+              {isContainerImageProject ? 'image' : project.branch}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
