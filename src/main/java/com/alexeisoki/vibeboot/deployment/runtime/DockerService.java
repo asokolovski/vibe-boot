@@ -17,6 +17,7 @@ import com.alexeisoki.vibeboot.project.Project;
 public class DockerService {
 
     private static final Duration BUILD_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration COMPOSE_TIMEOUT = Duration.ofMinutes(10);
     private static final Duration RUN_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration LOGS_TIMEOUT = Duration.ofSeconds(30);
@@ -109,6 +110,56 @@ public class DockerService {
         );
     }
 
+    public ComposeRunResult runCompose(
+            UUID deploymentId,
+            Project project,
+            Path generatedComposeFile,
+            int hostPort,
+            int containerPort,
+            Map<String, String> environmentVariables
+    ) {
+        validateDeploymentId(deploymentId);
+        validateProject(project);
+        if (generatedComposeFile == null) {
+            throw new IllegalArgumentException("generatedComposeFile must not be null");
+        }
+        if (hostPort <= 0) {
+            throw new IllegalArgumentException("hostPort must be positive");
+        }
+        if (containerPort <= 0) {
+            throw new IllegalArgumentException("containerPort must be positive");
+        }
+        validateEnvironmentVariables(environmentVariables);
+
+        String composeProjectName = toComposeProjectName(deploymentId);
+        CommandResult result = commandRunner.run(
+                List.of(
+                        "docker",
+                        "compose",
+                        "-p",
+                        composeProjectName,
+                        "-f",
+                        generatedComposeFile.toString(),
+                        "up",
+                        "-d",
+                        "--build"
+                ),
+                generatedComposeFile.getParent(),
+                environmentVariables,
+                COMPOSE_TIMEOUT
+        );
+
+        requireSuccess(result, "Docker Compose deployment failed");
+        return new ComposeRunResult(
+                composeProjectName,
+                project.getPrimaryServiceName(),
+                hostPort,
+                containerPort,
+                "http://localhost:" + hostPort,
+                combineOutput(result.stdout(), result.stderr())
+        );
+    }
+
     private List<String> dockerRunCommand(
             UUID deploymentId,
             String imageName,
@@ -149,6 +200,27 @@ public class DockerService {
         requireSuccess(result, "Docker container stop failed");
     }
 
+    public void stopComposeProject(String composeProjectName) {
+        validateText(composeProjectName, "composeProjectName");
+
+        List<String> containerIds = composeContainerIds(composeProjectName);
+        if (containerIds.isEmpty()) {
+            throw new DockerServiceException("Docker Compose stop failed: no containers found for project " + composeProjectName);
+        }
+
+        CommandResult stopResult = commandRunner.run(
+                commandWithContainerIds(List.of("docker", "stop"), containerIds),
+                STOP_TIMEOUT
+        );
+        requireSuccess(stopResult, "Docker Compose container stop failed");
+
+        CommandResult removeResult = commandRunner.run(
+                commandWithContainerIds(List.of("docker", "rm"), containerIds),
+                STOP_TIMEOUT
+        );
+        requireSuccess(removeResult, "Docker Compose container remove failed");
+    }
+
     public String getContainerLogs(String containerId) {
         validateText(containerId, "containerId");
 
@@ -161,12 +233,65 @@ public class DockerService {
         return combineOutput(result.stdout(), result.stderr());
     }
 
+    public String getComposeLogs(String composeProjectName) {
+        validateText(composeProjectName, "composeProjectName");
+
+        List<String> containerIds = composeContainerIds(composeProjectName);
+        if (containerIds.isEmpty()) {
+            return "";
+        }
+
+        String combinedLogs = "";
+        for (String containerId : containerIds) {
+            CommandResult result = commandRunner.run(
+                    List.of("docker", "logs", containerId),
+                    LOGS_TIMEOUT
+            );
+
+            requireSuccess(result, "Docker Compose logs failed");
+            combinedLogs = combineOutput(combinedLogs, combineOutput(result.stdout(), result.stderr()));
+        }
+
+        return combinedLogs;
+    }
+
     private String toImageName(UUID deploymentId, Project project) {
         return "vibeboot-" + toDockerSafeNamePart(project.getName()) + ":" + deploymentId;
     }
 
     private String toContainerName(UUID deploymentId) {
         return "vibeboot-deployment-" + deploymentId;
+    }
+
+    private String toComposeProjectName(UUID deploymentId) {
+        return "vibeboot-" + deploymentId;
+    }
+
+    private List<String> composeContainerIds(String composeProjectName) {
+        CommandResult result = commandRunner.run(
+                List.of(
+                        "docker",
+                        "ps",
+                        "-aq",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                STOP_TIMEOUT
+        );
+
+        requireSuccess(result, "Docker Compose container lookup failed");
+
+        return result.stdout()
+                .lines()
+                .map(String::trim)
+                .filter(line -> !line.isBlank())
+                .toList();
+    }
+
+    private List<String> commandWithContainerIds(List<String> prefix, List<String> containerIds) {
+        List<String> command = new ArrayList<>(prefix);
+        command.addAll(containerIds);
+        return command;
     }
 
     private String toDockerSafeNamePart(String value) {

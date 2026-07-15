@@ -21,6 +21,7 @@ import jakarta.validation.constraints.NotBlank;
 public class Project {
     public static final String DEFAULT_BRANCH = "main";
     public static final String DEFAULT_DOCKERFILE_PATH = "Dockerfile";
+    public static final String DEFAULT_COMPOSE_FILE_PATH = "compose.yaml";
     public static final int DEFAULT_CONTAINER_PORT = 8080;
     public static final String DEFAULT_HEALTH_CHECK_PATH = "/health";
 
@@ -60,6 +61,12 @@ public class Project {
 
     @Column(nullable = true)
     private String containerRegistry;
+
+    @Column(nullable = true)
+    private String composeFilePath = DEFAULT_COMPOSE_FILE_PATH;
+
+    @Column(nullable = true)
+    private String primaryServiceName;
 
     // Stored by JPA, but only set once when the entity is first inserted.
     @Column(nullable = false, updatable = false)
@@ -106,15 +113,34 @@ public class Project {
             ProjectSourceType sourceType,
             String containerRegistry
     ) {
+        this(name, repositoryUrl, branch, dockerfilePath, containerPort, healthCheckPath, ownerUserId,
+                sourceType, containerRegistry, null, null);
+    }
+
+    public Project(
+            String name,
+            String repositoryUrl,
+            String branch,
+            String dockerfilePath,
+            Integer containerPort,
+            String healthCheckPath,
+            UUID ownerUserId,
+            ProjectSourceType sourceType,
+            String containerRegistry,
+            String composeFilePath,
+            String primaryServiceName
+    ) {
         this.name = name;
         this.repositoryUrl = repositoryUrl;
         this.branch = defaultIfBlank(branch, DEFAULT_BRANCH);
         this.dockerfilePath = defaultIfBlank(dockerfilePath, DEFAULT_DOCKERFILE_PATH);
-        this.containerPort = containerPort != null ? containerPort : DEFAULT_CONTAINER_PORT;
+        this.containerPort = containerPort != null ? containerPort : defaultContainerPort(sourceType);
         this.healthCheckPath = defaultIfBlank(healthCheckPath, DEFAULT_HEALTH_CHECK_PATH);
         this.ownerUserId = ownerUserId;
         this.sourceType = sourceType;
         this.containerRegistry = containerRegistry;
+        this.composeFilePath = defaultIfBlank(composeFilePath, DEFAULT_COMPOSE_FILE_PATH);
+        this.primaryServiceName = blankToNull(primaryServiceName);
     }
 
     // @PrePersist runs right before JPA inserts this entity into the database.
@@ -146,6 +172,10 @@ public class Project {
     }
 
     public Integer getContainerPort() {
+        if (getSourceType() == ProjectSourceType.DOCKER_COMPOSE) {
+            return containerPort;
+        }
+
         return containerPort != null ? containerPort : DEFAULT_CONTAINER_PORT;
     }
 
@@ -167,6 +197,22 @@ public class Project {
 
     public String getContainerRegistry() {
         return containerRegistry;
+    }
+
+    public String getComposeFilePath() {
+        return defaultIfBlank(composeFilePath, DEFAULT_COMPOSE_FILE_PATH);
+    }
+
+    public String getPrimaryServiceName() {
+        return primaryServiceName;
+    }
+
+    private Integer defaultContainerPort(ProjectSourceType sourceType) {
+        return sourceType == ProjectSourceType.DOCKER_COMPOSE ? null : DEFAULT_CONTAINER_PORT;
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private String defaultIfBlank(String value, String defaultValue) {

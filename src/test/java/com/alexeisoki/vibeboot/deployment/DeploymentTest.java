@@ -39,6 +39,26 @@ class DeploymentTest {
     }
 
     @Test
+    void recordComposeRuntime_storesComposeRuntimeMetadata() {
+        Deployment deployment = new Deployment(UUID.randomUUID());
+
+        deployment.recordComposeRuntime(
+                "vibeboot-123",
+                "frontend",
+                49152,
+                80,
+                "http://localhost:49152"
+        );
+
+        assertThat(deployment.getRuntimeType()).isEqualTo(DeploymentRuntimeType.DOCKER_COMPOSE);
+        assertThat(deployment.getComposeProjectName()).isEqualTo("vibeboot-123");
+        assertThat(deployment.getPrimaryServiceName()).isEqualTo("frontend");
+        assertThat(deployment.getHostPort()).isEqualTo(49152);
+        assertThat(deployment.getContainerPort()).isEqualTo(80);
+        assertThat(deployment.getDeploymentUrl()).isEqualTo("http://localhost:49152");
+    }
+
+    @Test
     void markStopped_setsStoppedStatusWithoutChangingFinishedAt() {
         Deployment deployment = new Deployment(UUID.randomUUID());
         deployment.markFinished(DeploymentStatus.SUCCESS);

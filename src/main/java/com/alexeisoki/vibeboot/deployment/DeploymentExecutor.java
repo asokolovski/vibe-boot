@@ -5,12 +5,16 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.alexeisoki.vibeboot.deployment.runtime.DockerBuildResult;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerRunResult;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerService;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerServiceException;
+import com.alexeisoki.vibeboot.deployment.runtime.ComposeFileResult;
+import com.alexeisoki.vibeboot.deployment.runtime.ComposeFileService;
+import com.alexeisoki.vibeboot.deployment.runtime.ComposeRunResult;
 import com.alexeisoki.vibeboot.deployment.runtime.GitCloneResult;
 import com.alexeisoki.vibeboot.deployment.runtime.GitService;
 import com.alexeisoki.vibeboot.deployment.runtime.GitServiceException;
@@ -37,8 +41,9 @@ public class DeploymentExecutor {
     private final WorkspaceService workspaceService;
     private final GitService gitService;
     private final ProjectEnvironmentVariableService environmentVariableService;
+    private final ComposeFileService composeFileService;
 
-    public DeploymentExecutor(
+    DeploymentExecutor(
             DeploymentRepository deploymentRepository,
             DeploymentLogService deploymentLogService,
             ProjectService projectService,
@@ -49,6 +54,33 @@ public class DeploymentExecutor {
             GitService gitService,
             ProjectEnvironmentVariableService environmentVariableService
     ) {
+        this(
+                deploymentRepository,
+                deploymentLogService,
+                projectService,
+                dockerService,
+                portAllocator,
+                healthCheckService,
+                workspaceService,
+                gitService,
+                environmentVariableService,
+                new ComposeFileService()
+        );
+    }
+
+    @Autowired
+    public DeploymentExecutor(
+            DeploymentRepository deploymentRepository,
+            DeploymentLogService deploymentLogService,
+            ProjectService projectService,
+            DockerService dockerService,
+            PortAllocator portAllocator,
+            HealthCheckService healthCheckService,
+            WorkspaceService workspaceService,
+            GitService gitService,
+            ProjectEnvironmentVariableService environmentVariableService,
+            ComposeFileService composeFileService
+    ) {
         this.deploymentRepository = deploymentRepository;
         this.deploymentLogService = deploymentLogService;
         this.projectService = projectService;
@@ -58,6 +90,7 @@ public class DeploymentExecutor {
         this.workspaceService = workspaceService;
         this.gitService = gitService;
         this.environmentVariableService = environmentVariableService;
+        this.composeFileService = composeFileService;
     }
 
     public void execute(UUID deploymentId) {
@@ -88,16 +121,28 @@ public class DeploymentExecutor {
             Project project = projectService.getProjectOrThrow(deployment.getProjectId());
             if (project.getSourceType() == ProjectSourceType.CONTAINER_IMAGE) {
                 pullDockerImage(deploymentId, deployment, project);
+                int hostPort = allocateHostPort();
+                Map<String, String> environmentVariables =
+                        loadEnvironmentVariables(deploymentId, deployment.getProjectId());
+                runDockerContainer(deploymentId, deployment, project, hostPort, environmentVariables);
+            } else if (project.getSourceType() == ProjectSourceType.DOCKER_COMPOSE) {
+                workspace = createWorkspace(deploymentId);
+                Path sourceDirectory = workspace.resolve("source");
+                cloneRepository(deploymentId, project, sourceDirectory);
+                int hostPort = allocateHostPort();
+                Map<String, String> environmentVariables =
+                        loadEnvironmentVariables(deploymentId, deployment.getProjectId());
+                runDockerCompose(deploymentId, deployment, project, sourceDirectory, hostPort, environmentVariables);
             } else {
                 workspace = createWorkspace(deploymentId);
                 Path sourceDirectory = workspace.resolve("source");
                 cloneRepository(deploymentId, project, sourceDirectory);
                 buildDockerImage(deploymentId, deployment, project, sourceDirectory);
+                int hostPort = allocateHostPort();
+                Map<String, String> environmentVariables =
+                        loadEnvironmentVariables(deploymentId, deployment.getProjectId());
+                runDockerContainer(deploymentId, deployment, project, hostPort, environmentVariables);
             }
-            int hostPort = allocateHostPort();
-            Map<String, String> environmentVariables =
-                    loadEnvironmentVariables(deploymentId, deployment.getProjectId());
-            runDockerContainer(deploymentId, deployment, project, hostPort, environmentVariables);
             finishAfterHealthCheck(deploymentId, deployment, project);
         } catch (RuntimeException exception) {
             failDeployment(deploymentId, deployment, exception);
@@ -190,6 +235,49 @@ public class DeploymentExecutor {
         deploymentLogService.appendLog(deploymentId, "Deployment URL: " + runResult.deploymentUrl());
     }
 
+    private void runDockerCompose(
+            UUID deploymentId,
+            Deployment deployment,
+            Project project,
+            Path sourceDirectory,
+            int hostPort,
+            Map<String, String> environmentVariables
+    ) {
+        deploymentLogService.appendLog(deploymentId, "Preparing Docker Compose file");
+        ComposeFileResult composeFileResult = composeFileService.createVibeBootComposeFile(
+                project,
+                sourceDirectory,
+                hostPort
+        );
+        deploymentLogService.appendLog(
+                deploymentId,
+                "Generated Docker Compose file: " + composeFileResult.composeFile().getFileName()
+        );
+
+        deploymentLogService.appendLog(deploymentId, "Starting Docker Compose project");
+        ComposeRunResult runResult = dockerService.runCompose(
+                deploymentId,
+                project,
+                composeFileResult.composeFile(),
+                hostPort,
+                composeFileResult.containerPort(),
+                environmentVariables
+        );
+        appendCommandOutput(deploymentId, runResult.output());
+
+        deployment.recordComposeRuntime(
+                runResult.composeProjectName(),
+                runResult.primaryServiceName(),
+                runResult.hostPort(),
+                runResult.containerPort(),
+                runResult.deploymentUrl()
+        );
+        deploymentRepository.save(deployment);
+        deploymentLogService.appendLog(deploymentId, "Docker Compose project started: " + runResult.composeProjectName());
+        deploymentLogService.appendLog(deploymentId, "Primary service: " + runResult.primaryServiceName());
+        deploymentLogService.appendLog(deploymentId, "Deployment URL: " + runResult.deploymentUrl());
+    }
+
     private void finishAfterHealthCheck(UUID deploymentId, Deployment deployment, Project project) {
         deploymentLogService.appendLog(
                 deploymentId,
@@ -216,7 +304,7 @@ public class DeploymentExecutor {
                 deploymentId,
                 "Health check failed after " + healthCheckResult.attempts() + " attempt(s)"
         );
-        cleanupUnhealthyContainer(deploymentId, deployment);
+        cleanupUnhealthyRuntime(deploymentId, deployment);
         deployment.markFinished(DeploymentStatus.FAILED);
         deploymentRepository.save(deployment);
         deploymentLogService.appendLog(deploymentId, "Deployment failed");
@@ -225,9 +313,7 @@ public class DeploymentExecutor {
     private void failDeployment(UUID deploymentId, Deployment deployment, RuntimeException exception) {
         appendFailureOutput(deploymentId, exception);
 
-        if (deployment.getContainerId() != null && !deployment.getContainerId().isBlank()) {
-            cleanupUnhealthyContainer(deploymentId, deployment);
-        }
+        cleanupUnhealthyRuntime(deploymentId, deployment);
 
         deployment.markFinished(DeploymentStatus.FAILED);
         deploymentRepository.save(deployment);
@@ -277,6 +363,45 @@ public class DeploymentExecutor {
             deploymentLogService.appendLog(
                     deploymentId,
                     "Could not stop unhealthy container: " + exception.getMessage()
+            );
+        }
+    }
+
+    private void cleanupUnhealthyRuntime(UUID deploymentId, Deployment deployment) {
+        if (deployment.getRuntimeType() == DeploymentRuntimeType.DOCKER_COMPOSE) {
+            cleanupUnhealthyComposeProject(deploymentId, deployment);
+            return;
+        }
+
+        cleanupUnhealthyContainer(deploymentId, deployment);
+    }
+
+    private void cleanupUnhealthyComposeProject(UUID deploymentId, Deployment deployment) {
+        String composeProjectName = deployment.getComposeProjectName();
+        if (composeProjectName == null || composeProjectName.isBlank()) {
+            return;
+        }
+
+        deploymentLogService.appendLog(deploymentId, "Collecting unhealthy Docker Compose logs");
+        try {
+            appendCommandOutput(deploymentId, dockerService.getComposeLogs(composeProjectName));
+        } catch (DockerServiceException exception) {
+            appendCommandOutput(deploymentId, exception.commandOutput());
+            deploymentLogService.appendLog(
+                    deploymentId,
+                    "Could not collect unhealthy Docker Compose logs: " + exception.getMessage()
+            );
+        }
+
+        deploymentLogService.appendLog(deploymentId, "Stopping unhealthy Docker Compose project: " + composeProjectName);
+        try {
+            dockerService.stopComposeProject(composeProjectName);
+            deploymentLogService.appendLog(deploymentId, "Unhealthy Docker Compose project stopped: " + composeProjectName);
+        } catch (DockerServiceException exception) {
+            appendCommandOutput(deploymentId, exception.commandOutput());
+            deploymentLogService.appendLog(
+                    deploymentId,
+                    "Could not stop unhealthy Docker Compose project: " + exception.getMessage()
             );
         }
     }

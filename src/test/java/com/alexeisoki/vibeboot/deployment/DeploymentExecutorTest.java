@@ -30,6 +30,9 @@ import com.alexeisoki.vibeboot.deployment.runtime.DockerBuildResult;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerRunResult;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerService;
 import com.alexeisoki.vibeboot.deployment.runtime.DockerServiceException;
+import com.alexeisoki.vibeboot.deployment.runtime.ComposeFileResult;
+import com.alexeisoki.vibeboot.deployment.runtime.ComposeFileService;
+import com.alexeisoki.vibeboot.deployment.runtime.ComposeRunResult;
 import com.alexeisoki.vibeboot.deployment.runtime.GitCloneResult;
 import com.alexeisoki.vibeboot.deployment.runtime.GitService;
 import com.alexeisoki.vibeboot.deployment.runtime.GitServiceException;
@@ -75,6 +78,9 @@ class DeploymentExecutorTest {
 
     @Mock
     private ProjectEnvironmentVariableService environmentVariableService;
+
+    @Mock
+    private ComposeFileService composeFileService;
 
     @Test
     void execute_clonesBuildsInjectsEnvVarsRunsHealthCheckAndCleansWorkspace() {
@@ -181,6 +187,56 @@ class DeploymentExecutorTest {
         verify(dockerService).pullImage(imageName);
         verify(dockerService).runContainer(deploymentId, project, imageName, 49152, Map.of());
         verify(healthCheckService).waitUntilHealthy("http://localhost:49152", "/");
+    }
+
+    @Test
+    void execute_clonesSanitizesAndRunsDockerComposeProject() {
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = new Deployment(UUID.randomUUID());
+        Project project = composeProject();
+        Path composeFile = SOURCE_DIRECTORY.resolve("vibeboot.compose.yaml");
+        Map<String, String> environmentVariables = Map.of("LLM_API_KEY", "secret");
+        DeploymentExecutor deploymentExecutor = deploymentExecutor();
+
+        stubRunningDeployment(deploymentId, deployment, project);
+        stubWorkspaceAndClone(deploymentId, project, "clone ok");
+        when(portAllocator.allocatePort()).thenReturn(49152);
+        when(environmentVariableService.getDecryptedEnvVarsForProject(deployment.getProjectId()))
+                .thenReturn(environmentVariables);
+        when(composeFileService.createVibeBootComposeFile(project, SOURCE_DIRECTORY, 49152))
+                .thenReturn(new ComposeFileResult(composeFile, 80));
+        when(dockerService.runCompose(deploymentId, project, composeFile, 49152, 80, environmentVariables))
+                .thenReturn(new ComposeRunResult(
+                        "vibeboot-" + deploymentId,
+                        "frontend",
+                        49152,
+                        80,
+                        "http://localhost:49152",
+                        "compose ok"
+                ));
+        when(healthCheckService.waitUntilHealthy("http://localhost:49152", "/"))
+                .thenReturn(new HealthCheckResult(
+                        true,
+                        URI.create("http://localhost:49152/"),
+                        1,
+                        "Health check succeeded"
+                ));
+
+        deploymentExecutor.execute(deploymentId);
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.SUCCESS);
+        assertThat(deployment.getRuntimeType()).isEqualTo(DeploymentRuntimeType.DOCKER_COMPOSE);
+        assertThat(deployment.getComposeProjectName()).isEqualTo("vibeboot-" + deploymentId);
+        assertThat(deployment.getPrimaryServiceName()).isEqualTo("frontend");
+        assertThat(deployment.getHostPort()).isEqualTo(49152);
+        assertThat(deployment.getContainerPort()).isEqualTo(80);
+
+        verify(composeFileService).createVibeBootComposeFile(project, SOURCE_DIRECTORY, 49152);
+        verify(dockerService).runCompose(deploymentId, project, composeFile, 49152, 80, environmentVariables);
+        verify(dockerService, never()).buildImage(any(UUID.class), any(Project.class), any(Path.class));
+        verify(dockerService, never()).runContainer(any(UUID.class), any(Project.class), anyString(), anyInt(), anyMap());
+        verify(healthCheckService).waitUntilHealthy("http://localhost:49152", "/");
+        verify(workspaceService).cleanupWorkspace(WORKSPACE);
     }
 
     @Test
@@ -403,7 +459,8 @@ class DeploymentExecutorTest {
                 healthCheckService,
                 workspaceService,
                 gitService,
-                environmentVariableService
+                environmentVariableService,
+                composeFileService
         );
     }
 
@@ -429,6 +486,22 @@ class DeploymentExecutorTest {
                 null,
                 ProjectSourceType.CONTAINER_IMAGE,
                 "ghcr.io/asokolovski/vb-gha-demo-app"
+        );
+    }
+
+    private Project composeProject() {
+        return new Project(
+                "YT Clipper",
+                "https://github.com/asokolovski/yt-clipper-mvp",
+                "main",
+                null,
+                null,
+                "/",
+                null,
+                ProjectSourceType.DOCKER_COMPOSE,
+                null,
+                "compose.yaml",
+                "frontend"
         );
     }
 }

@@ -366,6 +366,48 @@ class DeploymentServiceTest {
     }
 
     @Test
+    void stopDeployment_stopsComposeProjectMarksStoppedWritesLogsAndReturnsResponse() {
+        DeploymentService deploymentService = new DeploymentService(
+                deploymentRepository,
+                projectService,
+                deploymentQueuePublisher,
+                dockerService,
+                deploymentLogService
+        );
+        UUID deploymentId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-05-15T12:00:00Z");
+        Deployment deployment = deploymentWithGeneratedFields(deploymentId, projectId, createdAt);
+        deployment.recordComposeRuntime(
+                "vibeboot-" + deploymentId,
+                "frontend",
+                49152,
+                80,
+                "http://localhost:49152"
+        );
+        deployment.markFinished(DeploymentStatus.SUCCESS);
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
+        when(deploymentRepository.save(any(Deployment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DeploymentResponse response = deploymentService.stopDeployment(deploymentId);
+
+        assertThat(response.status()).isEqualTo(DeploymentStatus.STOPPED);
+        assertThat(response.runtimeType()).isEqualTo("DOCKER_COMPOSE");
+        assertThat(response.composeProjectName()).isEqualTo("vibeboot-" + deploymentId);
+        assertThat(response.primaryServiceName()).isEqualTo("frontend");
+
+        InOrder inOrder = inOrder(dockerService, deploymentRepository, deploymentLogService);
+        inOrder.verify(dockerService).stopComposeProject("vibeboot-" + deploymentId);
+        inOrder.verify(deploymentRepository).save(deployment);
+        inOrder.verify(deploymentLogService).appendLog(
+                deploymentId,
+                "Docker Compose project stopped: vibeboot-" + deploymentId
+        );
+        inOrder.verify(deploymentLogService).appendLog(deploymentId, "Deployment stopped");
+    }
+
+    @Test
     void stopDeployment_throwsWhenDeploymentIsMissing() {
         // Arrange
         DeploymentService deploymentService = new DeploymentService(

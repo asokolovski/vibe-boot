@@ -55,4 +55,27 @@ class ProjectTest {
 
         assertThat(project.getOwnerUserId()).isEqualTo(ownerUserId);
     }
+
+    @Test
+    void constructor_allowsComposeProjectsToInferContainerPortLater() {
+        Project project = new Project(
+                "YT Clipper",
+                "https://github.com/asokolovski/yt-clipper-mvp",
+                "main",
+                null,
+                null,
+                "/",
+                null,
+                ProjectSourceType.DOCKER_COMPOSE,
+                null,
+                "compose.yaml",
+                "frontend"
+        );
+
+        assertThat(project.getSourceType()).isEqualTo(ProjectSourceType.DOCKER_COMPOSE);
+        assertThat(project.getComposeFilePath()).isEqualTo("compose.yaml");
+        assertThat(project.getPrimaryServiceName()).isEqualTo("frontend");
+        assertThat(project.getContainerPort()).isNull();
+        assertThat(project.getHealthCheckPath()).isEqualTo("/");
+    }
 }

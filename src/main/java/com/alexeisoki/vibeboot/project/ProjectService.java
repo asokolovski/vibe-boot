@@ -33,7 +33,9 @@ public class ProjectService {
                 request.healthCheckPath(),
                 currentUserId,
                 request.sourceType(),
-                request.containerRegistry()
+                request.containerRegistry(),
+                request.composeFilePath(),
+                request.primaryServiceName()
         );
 
         Project savedProject = projectRepository.save(project);
@@ -86,6 +88,8 @@ public class ProjectService {
                 project.getDockerfilePath(),
                 project.getContainerPort(),
                 project.getHealthCheckPath(),
+                project.getComposeFilePath(),
+                project.getPrimaryServiceName(),
                 project.getOwnerUserId(),
                 project.getCreatedAt()
         );

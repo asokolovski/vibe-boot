@@ -1,4 +1,7 @@
-export type ProjectSourceType = 'GITHUB_REPOSITORY' | 'CONTAINER_IMAGE'
+export type ProjectSourceType =
+  | 'GITHUB_REPOSITORY'
+  | 'CONTAINER_IMAGE'
+  | 'DOCKER_COMPOSE'
 
 export type ProjectResponse = {
   id: string
@@ -8,8 +11,10 @@ export type ProjectResponse = {
   containerRegistry: string | null
   branch: string
   dockerfilePath: string
-  containerPort: number
+  containerPort: number | null
   healthCheckPath: string
+  composeFilePath: string
+  primaryServiceName: string | null
   createdAt: string
 }
 
@@ -22,6 +27,8 @@ export type CreateProjectRequest = {
   dockerfilePath?: string
   containerPort?: number
   healthCheckPath?: string
+  composeFilePath?: string
+  primaryServiceName?: string
 }
 
 export type ProjectEnvironmentVariableResponse = {
@@ -55,6 +62,9 @@ export type DeploymentResponse = {
   hostPort: number | null
   containerPort: number | null
   deploymentUrl: string | null
+  runtimeType: string | null
+  composeProjectName: string | null
+  primaryServiceName: string | null
 }
 
 export type TriggerDeploymentRequest = {

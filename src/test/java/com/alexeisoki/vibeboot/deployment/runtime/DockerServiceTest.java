@@ -253,6 +253,83 @@ class DockerServiceTest {
     }
 
     @Test
+    void runCompose_runsDockerComposeUpAndReturnsRuntimeMetadata() {
+        DockerService dockerService = new DockerService(commandRunner);
+        Project project = composeProject();
+        Path generatedComposeFile = Path.of("/tmp/vibeboot-workspaces/source/vibeboot.compose.yaml");
+        Map<String, String> environmentVariables = Map.of("LLM_API_KEY", "secret");
+
+        when(commandRunner.run(
+                List.of(
+                        "docker",
+                        "compose",
+                        "-p",
+                        "vibeboot-" + DEPLOYMENT_ID,
+                        "-f",
+                        generatedComposeFile.toString(),
+                        "up",
+                        "-d",
+                        "--build"
+                ),
+                generatedComposeFile.getParent(),
+                environmentVariables,
+                Duration.ofMinutes(10)
+        )).thenReturn(new CommandResult(0, "compose ok", "", false));
+
+        ComposeRunResult result = dockerService.runCompose(
+                DEPLOYMENT_ID,
+                project,
+                generatedComposeFile,
+                49152,
+                80,
+                environmentVariables
+        );
+
+        assertThat(result.composeProjectName()).isEqualTo("vibeboot-" + DEPLOYMENT_ID);
+        assertThat(result.primaryServiceName()).isEqualTo("frontend");
+        assertThat(result.hostPort()).isEqualTo(49152);
+        assertThat(result.containerPort()).isEqualTo(80);
+        assertThat(result.deploymentUrl()).isEqualTo("http://localhost:49152");
+        assertThat(result.output()).isEqualTo("compose ok");
+    }
+
+    @Test
+    void stopComposeProject_stopsAndRemovesComposeContainersByProjectLabel() {
+        DockerService dockerService = new DockerService(commandRunner);
+        String composeProjectName = "vibeboot-" + DEPLOYMENT_ID;
+
+        when(commandRunner.run(
+                List.of(
+                        "docker",
+                        "ps",
+                        "-aq",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "abc123\ndef456\n", "", false));
+        when(commandRunner.run(
+                List.of("docker", "stop", "abc123", "def456"),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "abc123\ndef456\n", "", false));
+        when(commandRunner.run(
+                List.of("docker", "rm", "abc123", "def456"),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "abc123\ndef456\n", "", false));
+
+        dockerService.stopComposeProject(composeProjectName);
+
+        verify(commandRunner).run(
+                List.of("docker", "stop", "abc123", "def456"),
+                Duration.ofSeconds(30)
+        );
+        verify(commandRunner).run(
+                List.of("docker", "rm", "abc123", "def456"),
+                Duration.ofSeconds(30)
+        );
+    }
+
+    @Test
     void stopContainer_runsDockerStop() {
         DockerService dockerService = new DockerService(commandRunner);
 
@@ -291,6 +368,22 @@ class DockerServiceTest {
                 "Dockerfile",
                 8080,
                 "/health"
+        );
+    }
+
+    private Project composeProject() {
+        return new Project(
+                "YT Clipper",
+                "https://github.com/asokolovski/yt-clipper-mvp",
+                "main",
+                null,
+                null,
+                "/",
+                null,
+                com.alexeisoki.vibeboot.project.ProjectSourceType.DOCKER_COMPOSE,
+                null,
+                "compose.yaml",
+                "frontend"
         );
     }
 }

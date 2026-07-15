@@ -2,5 +2,6 @@ package com.alexeisoki.vibeboot.project;
 
 public enum ProjectSourceType {
     GITHUB_REPOSITORY,
-    CONTAINER_IMAGE
+    CONTAINER_IMAGE,
+    DOCKER_COMPOSE
 }

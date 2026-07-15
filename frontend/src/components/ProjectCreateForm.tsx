@@ -13,6 +13,8 @@ type ProjectFormValues = {
   containerRegistry: string
   branch: string
   dockerfilePath: string
+  composeFilePath: string
+  primaryServiceName: string
   containerPort: string
   healthCheckPath: string
 }
@@ -29,6 +31,8 @@ const emptyProjectForm: ProjectFormValues = {
   containerRegistry: '',
   branch: '',
   dockerfilePath: '',
+  composeFilePath: '',
+  primaryServiceName: '',
   containerPort: '',
   healthCheckPath: '',
 }
@@ -52,7 +56,8 @@ const buildCreateProjectRequest = (
     name: form.name.trim(),
     sourceType: form.sourceType,
     repositoryUrl:
-      form.sourceType === 'GITHUB_REPOSITORY'
+      form.sourceType === 'GITHUB_REPOSITORY' ||
+      form.sourceType === 'DOCKER_COMPOSE'
         ? optionalText(form.repositoryUrl)
         : undefined,
     containerRegistry:
@@ -60,12 +65,21 @@ const buildCreateProjectRequest = (
         ? optionalText(form.containerRegistry)
         : undefined,
     branch:
-      form.sourceType === 'GITHUB_REPOSITORY'
+      form.sourceType === 'GITHUB_REPOSITORY' ||
+      form.sourceType === 'DOCKER_COMPOSE'
         ? optionalText(form.branch)
         : undefined,
     dockerfilePath:
       form.sourceType === 'GITHUB_REPOSITORY'
         ? optionalText(form.dockerfilePath)
+        : undefined,
+    composeFilePath:
+      form.sourceType === 'DOCKER_COMPOSE'
+        ? optionalText(form.composeFilePath)
+        : undefined,
+    primaryServiceName:
+      form.sourceType === 'DOCKER_COMPOSE'
+        ? optionalText(form.primaryServiceName)
         : undefined,
     containerPort:
       containerPort === undefined ? undefined : Number(containerPort),
@@ -120,6 +134,7 @@ function ProjectCreateForm({
   }
 
   const isContainerImageProject = projectForm.sourceType === 'CONTAINER_IMAGE'
+  const isComposeProject = projectForm.sourceType === 'DOCKER_COMPOSE'
 
   return (
     <form className="create-project-form" onSubmit={handleCreateProject}>
@@ -147,6 +162,7 @@ function ProjectCreateForm({
         >
           <option value="GITHUB_REPOSITORY">GitHub repository</option>
           <option value="CONTAINER_IMAGE">Container registry</option>
+          <option value="DOCKER_COMPOSE">Docker Compose repository</option>
         </select>
       </label>
 
@@ -191,18 +207,54 @@ function ProjectCreateForm({
               value={projectForm.branch}
             />
           </label>
-          <label className="field">
-            <span>Dockerfile</span>
-            <input
-              name="dockerfilePath"
-              onChange={(event) =>
-                handleProjectFieldChange(event.target.name, event.target.value)
-              }
-              placeholder="Dockerfile"
-              type="text"
-              value={projectForm.dockerfilePath}
-            />
-          </label>
+          {isComposeProject ? (
+            <>
+              <label className="field">
+                <span>Compose File</span>
+                <input
+                  name="composeFilePath"
+                  onChange={(event) =>
+                    handleProjectFieldChange(
+                      event.target.name,
+                      event.target.value,
+                    )
+                  }
+                  placeholder="compose.yaml"
+                  type="text"
+                  value={projectForm.composeFilePath}
+                />
+              </label>
+              <label className="field">
+                <span>Primary Service</span>
+                <input
+                  name="primaryServiceName"
+                  onChange={(event) =>
+                    handleProjectFieldChange(
+                      event.target.name,
+                      event.target.value,
+                    )
+                  }
+                  placeholder="frontend"
+                  required
+                  type="text"
+                  value={projectForm.primaryServiceName}
+                />
+              </label>
+            </>
+          ) : (
+            <label className="field">
+              <span>Dockerfile</span>
+              <input
+                name="dockerfilePath"
+                onChange={(event) =>
+                  handleProjectFieldChange(event.target.name, event.target.value)
+                }
+                placeholder="Dockerfile"
+                type="text"
+                value={projectForm.dockerfilePath}
+              />
+            </label>
+          )}
         </>
       )}
 
@@ -215,10 +267,15 @@ function ProjectCreateForm({
           onChange={(event) =>
             handleProjectFieldChange(event.target.name, event.target.value)
           }
-          placeholder={isContainerImageProject ? '80' : '8080'}
+          placeholder={
+            isContainerImageProject ? '80' : isComposeProject ? 'auto' : '8080'
+          }
           type="number"
           value={projectForm.containerPort}
         />
+        {isComposeProject ? (
+          <small>Optional for Compose; inferred from the primary service when blank.</small>
+        ) : null}
       </label>
       <label className="field">
         <span>Health Check</span>
@@ -227,7 +284,7 @@ function ProjectCreateForm({
           onChange={(event) =>
             handleProjectFieldChange(event.target.name, event.target.value)
           }
-          placeholder={isContainerImageProject ? '/' : '/health'}
+          placeholder={isContainerImageProject || isComposeProject ? '/' : '/health'}
           type="text"
           value={projectForm.healthCheckPath}
         />

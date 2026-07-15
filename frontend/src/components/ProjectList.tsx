@@ -38,6 +38,7 @@ function ProjectList({
     <div className="project-list">
       {projects.map((project) => {
         const isContainerImageProject = project.sourceType === 'CONTAINER_IMAGE'
+        const isComposeProject = project.sourceType === 'DOCKER_COMPOSE'
 
         return (
           <button
@@ -59,7 +60,11 @@ function ProjectList({
               </small>
             </span>
             <span className="branch-label">
-              {isContainerImageProject ? 'image' : project.branch}
+              {isContainerImageProject
+                ? 'image'
+                : isComposeProject
+                  ? 'compose'
+                  : project.branch}
             </span>
           </button>
         )

@@ -39,7 +39,8 @@ const shortId = (value: string | null) => {
 }
 
 const hasRunningContainer = (deployment: DeploymentResponse) =>
-  Boolean(deployment.containerId) && deployment.status !== 'STOPPED'
+  (Boolean(deployment.containerId) || Boolean(deployment.composeProjectName)) &&
+  deployment.status !== 'STOPPED'
 
 const optionalText = (value: string) => {
   const trimmed = value.trim()
@@ -336,12 +337,19 @@ function DeploymentsPanel({
                   </dd>
                 </div>
                 <div>
-                  <dt>Image</dt>
+                  <dt>Runtime</dt>
+                  <dd>{selectedDeployment.runtimeType ?? 'SINGLE_CONTAINER'}</dd>
+                </div>
+                <div>
+                  <dt>Image / Compose</dt>
                   <dd>{selectedDeployment.imageName ?? 'Not set'}</dd>
                 </div>
                 <div>
                   <dt>Container</dt>
-                  <dd>{shortId(selectedDeployment.containerId)}</dd>
+                  <dd>
+                    {selectedDeployment.composeProjectName ??
+                      shortId(selectedDeployment.containerId)}
+                  </dd>
                 </div>
                 <div>
                   <dt>Host Port</dt>

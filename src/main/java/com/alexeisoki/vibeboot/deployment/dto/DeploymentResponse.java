@@ -16,6 +16,39 @@ public record DeploymentResponse(
         String containerId,
         Integer hostPort,
         Integer containerPort,
-        String deploymentUrl
+        String deploymentUrl,
+        String runtimeType,
+        String composeProjectName,
+        String primaryServiceName
 ) {
+    public DeploymentResponse(
+            UUID id,
+            UUID projectId,
+            DeploymentStatus status,
+            Instant createdAt,
+            Instant startedAt,
+            Instant finishedAt,
+            String imageName,
+            String containerId,
+            Integer hostPort,
+            Integer containerPort,
+            String deploymentUrl
+    ) {
+        this(
+                id,
+                projectId,
+                status,
+                createdAt,
+                startedAt,
+                finishedAt,
+                imageName,
+                containerId,
+                hostPort,
+                containerPort,
+                deploymentUrl,
+                null,
+                null,
+                null
+        );
+    }
 }

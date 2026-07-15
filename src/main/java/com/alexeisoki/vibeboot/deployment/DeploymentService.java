@@ -104,19 +104,36 @@ public class DeploymentService {
             throw new ResourceConflictException("Deployment is already stopped");
         }
 
+        String stoppedRuntimeMessage = deployment.getRuntimeType() == DeploymentRuntimeType.DOCKER_COMPOSE
+                ? stopComposeDeployment(deployment)
+                : stopContainerDeployment(deployment);
+
+        deployment.markStopped();
+        Deployment savedDeployment = deploymentRepository.save(deployment);
+        deploymentLogService.appendLog(deploymentId, stoppedRuntimeMessage);
+        deploymentLogService.appendLog(deploymentId, "Deployment stopped");
+
+        return toResponse(savedDeployment);
+    }
+
+    private String stopContainerDeployment(Deployment deployment) {
         String containerId = deployment.getContainerId();
         if (containerId == null || containerId.isBlank()) {
             throw new ResourceConflictException("Deployment has no running container to stop");
         }
 
         dockerService.stopContainer(containerId);
-        deployment.markStopped();
-        Deployment savedDeployment = deploymentRepository.save(deployment);
+        return "Docker container stopped: " + containerId;
+    }
 
-        deploymentLogService.appendLog(deploymentId, "Docker container stopped: " + containerId);
-        deploymentLogService.appendLog(deploymentId, "Deployment stopped");
+    private String stopComposeDeployment(Deployment deployment) {
+        String composeProjectName = deployment.getComposeProjectName();
+        if (composeProjectName == null || composeProjectName.isBlank()) {
+            throw new ResourceConflictException("Deployment has no running Compose project to stop");
+        }
 
-        return toResponse(savedDeployment);
+        dockerService.stopComposeProject(composeProjectName);
+        return "Docker Compose project stopped: " + composeProjectName;
     }
 
     Deployment getDeploymentEntityForUserOrThrow(UUID deploymentId, UUID currentUserId) {
@@ -139,7 +156,10 @@ public class DeploymentService {
                 deployment.getContainerId(),
                 deployment.getHostPort(),
                 deployment.getContainerPort(),
-                deployment.getDeploymentUrl()
+                deployment.getDeploymentUrl(),
+                deployment.getRuntimeType().name(),
+                deployment.getComposeProjectName(),
+                deployment.getPrimaryServiceName()
         );
     }
 }

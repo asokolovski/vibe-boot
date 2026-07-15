@@ -14,6 +14,7 @@ const formatDate = (value: string) =>
 
 function ProjectDetails({ project }: ProjectDetailsProps) {
   const isContainerImageProject = project?.sourceType === 'CONTAINER_IMAGE'
+  const isComposeProject = project?.sourceType === 'DOCKER_COMPOSE'
 
   return (
     <section className="panel project-detail-panel">
@@ -41,15 +42,28 @@ function ProjectDetails({ project }: ProjectDetailsProps) {
                 <dt>Branch</dt>
                 <dd>{project.branch}</dd>
               </div>
-              <div>
-                <dt>Dockerfile</dt>
-                <dd>{project.dockerfilePath}</dd>
-              </div>
+              {isComposeProject ? (
+                <>
+                  <div>
+                    <dt>Compose File</dt>
+                    <dd>{project.composeFilePath}</dd>
+                  </div>
+                  <div>
+                    <dt>Primary Service</dt>
+                    <dd>{project.primaryServiceName}</dd>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <dt>Dockerfile</dt>
+                  <dd>{project.dockerfilePath}</dd>
+                </div>
+              )}
             </>
           )}
           <div>
             <dt>Container Port</dt>
-            <dd>{project.containerPort}</dd>
+            <dd>{project.containerPort ?? 'Auto'}</dd>
           </div>
           <div>
             <dt>Health Check</dt>

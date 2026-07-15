@@ -21,7 +21,9 @@ public record CreateProjectRequest(
         @Min(1)
         @Max(65535)
         Integer containerPort,
-        String healthCheckPath
+        String healthCheckPath,
+        String composeFilePath,
+        String primaryServiceName
 ) {
     private static final Pattern PUBLIC_GITHUB_REPOSITORY_URL = Pattern.compile(
             "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\\.git)?/?$"
@@ -31,7 +33,7 @@ public record CreateProjectRequest(
     );
 
     public CreateProjectRequest(String name, String repositoryUrl) {
-        this(name, repositoryUrl, null, null, null, null, null, null);
+        this(name, repositoryUrl, null, null, null, null, null, null, null, null);
     }
 
     public CreateProjectRequest(
@@ -42,12 +44,12 @@ public record CreateProjectRequest(
             Integer containerPort,
             String healthCheckPath
     ) {
-        this(name, repositoryUrl, null, null, branch, dockerfilePath, containerPort, healthCheckPath);
+        this(name, repositoryUrl, null, null, branch, dockerfilePath, containerPort, healthCheckPath, null, null);
     }
 
     @AssertTrue(message = "repositoryUrl must be a public HTTPS GitHub repository URL")
     public boolean isRepositoryUrlValidForSourceType() {
-        if (resolvedSourceType() != ProjectSourceType.GITHUB_REPOSITORY) {
+        if (resolvedSourceType() == ProjectSourceType.CONTAINER_IMAGE) {
             return true;
         }
 
@@ -69,11 +71,49 @@ public record CreateProjectRequest(
 
     @AssertTrue(message = "must be relative and stay inside the repository")
     public boolean isDockerfilePathSafe() {
+        if (resolvedSourceType() == ProjectSourceType.DOCKER_COMPOSE) {
+            return true;
+        }
+
         if (dockerfilePath == null || dockerfilePath.isBlank()) {
             return true;
         }
 
-        String normalizedPath = dockerfilePath.replace('\\', '/');
+        return isSafeRelativePath(dockerfilePath);
+    }
+
+    @AssertTrue(message = "composeFilePath must be a relative .yaml or .yml path inside the repository")
+    public boolean isComposeFilePathSafe() {
+        if (composeFilePath == null || composeFilePath.isBlank()) {
+            return true;
+        }
+
+        String normalizedPath = composeFilePath.replace('\\', '/');
+        return isSafeRelativePath(normalizedPath)
+                && (normalizedPath.endsWith(".yaml") || normalizedPath.endsWith(".yml"));
+    }
+
+    @AssertTrue(message = "primaryServiceName is required for Docker Compose projects and must use letters, numbers, dots, underscores, or hyphens")
+    public boolean isPrimaryServiceNameValidForSourceType() {
+        if (resolvedSourceType() != ProjectSourceType.DOCKER_COMPOSE) {
+            return true;
+        }
+
+        return primaryServiceName != null
+                && primaryServiceName.matches("[A-Za-z0-9_.-]+");
+    }
+
+    @AssertTrue(message = "must start with /")
+    public boolean isHealthCheckPathValid() {
+        return healthCheckPath == null || healthCheckPath.isBlank() || healthCheckPath.startsWith("/");
+    }
+
+    private ProjectSourceType resolvedSourceType() {
+        return sourceType != null ? sourceType : ProjectSourceType.GITHUB_REPOSITORY;
+    }
+
+    private boolean isSafeRelativePath(String path) {
+        String normalizedPath = path.replace('\\', '/');
         if (normalizedPath.startsWith("/") || normalizedPath.isBlank()) {
             return false;
         }
@@ -85,14 +125,5 @@ public record CreateProjectRequest(
         }
 
         return true;
-    }
-
-    @AssertTrue(message = "must start with /")
-    public boolean isHealthCheckPathValid() {
-        return healthCheckPath == null || healthCheckPath.isBlank() || healthCheckPath.startsWith("/");
-    }
-
-    private ProjectSourceType resolvedSourceType() {
-        return sourceType != null ? sourceType : ProjectSourceType.GITHUB_REPOSITORY;
     }
 }

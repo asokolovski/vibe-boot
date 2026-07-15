@@ -62,6 +62,16 @@ public class Deployment {
     @Column(nullable = true)
     private String deploymentUrl;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = true)
+    private DeploymentRuntimeType runtimeType;
+
+    @Column(nullable = true)
+    private String composeProjectName;
+
+    @Column(nullable = true)
+    private String primaryServiceName;
+
     protected Deployment() {
     }
 
@@ -104,8 +114,24 @@ public class Deployment {
             Integer containerPort,
             String deploymentUrl
     ) {
+        this.runtimeType = DeploymentRuntimeType.SINGLE_CONTAINER;
         this.imageName = imageName;
         this.containerId = containerId;
+        this.hostPort = hostPort;
+        this.containerPort = containerPort;
+        this.deploymentUrl = deploymentUrl;
+    }
+
+    public void recordComposeRuntime(
+            String composeProjectName,
+            String primaryServiceName,
+            Integer hostPort,
+            Integer containerPort,
+            String deploymentUrl
+    ) {
+        this.runtimeType = DeploymentRuntimeType.DOCKER_COMPOSE;
+        this.composeProjectName = composeProjectName;
+        this.primaryServiceName = primaryServiceName;
         this.hostPort = hostPort;
         this.containerPort = containerPort;
         this.deploymentUrl = deploymentUrl;
@@ -169,6 +195,18 @@ public class Deployment {
 
     public String getDeploymentUrl() {
         return deploymentUrl;
+    }
+
+    public DeploymentRuntimeType getRuntimeType() {
+        return runtimeType != null ? runtimeType : DeploymentRuntimeType.SINGLE_CONTAINER;
+    }
+
+    public String getComposeProjectName() {
+        return composeProjectName;
+    }
+
+    public String getPrimaryServiceName() {
+        return primaryServiceName;
     }
 
     private String blankToNull(String value) {
