@@ -2,6 +2,7 @@ package com.alexeisoki.vibeboot.deployment.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -294,7 +295,7 @@ class DockerServiceTest {
     }
 
     @Test
-    void stopComposeProject_stopsAndRemovesComposeContainersByProjectLabel() {
+    void stopComposeProject_removesContainersVolumesAndNetworks() {
         DockerService dockerService = new DockerService(commandRunner);
         String composeProjectName = "vibeboot-" + DEPLOYMENT_ID;
 
@@ -309,13 +310,54 @@ class DockerServiceTest {
                 Duration.ofSeconds(30)
         )).thenReturn(new CommandResult(0, "abc123\ndef456\n", "", false));
         when(commandRunner.run(
+                List.of(
+                        "docker",
+                        "volume",
+                        "ls",
+                        "-q",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(
+                0,
+                composeProjectName + "_clip_storage\n" + composeProjectName + "_postgres_data\n",
+                "",
+                false
+        ));
+        when(commandRunner.run(
+                List.of(
+                        "docker",
+                        "network",
+                        "ls",
+                        "-q",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "network123\n", "", false));
+        when(commandRunner.run(
                 List.of("docker", "stop", "abc123", "def456"),
                 Duration.ofSeconds(30)
         )).thenReturn(new CommandResult(0, "abc123\ndef456\n", "", false));
         when(commandRunner.run(
-                List.of("docker", "rm", "abc123", "def456"),
+                List.of("docker", "rm", "-v", "abc123", "def456"),
                 Duration.ofSeconds(30)
         )).thenReturn(new CommandResult(0, "abc123\ndef456\n", "", false));
+        when(commandRunner.run(
+                List.of(
+                        "docker",
+                        "volume",
+                        "rm",
+                        composeProjectName + "_clip_storage",
+                        composeProjectName + "_postgres_data"
+                ),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "volumes removed\n", "", false));
+        when(commandRunner.run(
+                List.of("docker", "network", "rm", "network123"),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "network123\n", "", false));
 
         dockerService.stopComposeProject(composeProjectName);
 
@@ -324,17 +366,101 @@ class DockerServiceTest {
                 Duration.ofSeconds(30)
         );
         verify(commandRunner).run(
-                List.of("docker", "rm", "abc123", "def456"),
+                List.of("docker", "rm", "-v", "abc123", "def456"),
+                Duration.ofSeconds(30)
+        );
+        verify(commandRunner).run(
+                List.of(
+                        "docker",
+                        "volume",
+                        "rm",
+                        composeProjectName + "_clip_storage",
+                        composeProjectName + "_postgres_data"
+                ),
+                Duration.ofSeconds(30)
+        );
+        verify(commandRunner).run(
+                List.of("docker", "network", "rm", "network123"),
                 Duration.ofSeconds(30)
         );
     }
 
     @Test
-    void stopContainer_runsDockerStop() {
+    void stopComposeProject_removesLeftoverVolumesAndNetworksWhenContainersAreAlreadyGone() {
+        DockerService dockerService = new DockerService(commandRunner);
+        String composeProjectName = "vibeboot-" + DEPLOYMENT_ID;
+
+        when(commandRunner.run(
+                List.of(
+                        "docker",
+                        "ps",
+                        "-aq",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "", "", false));
+        when(commandRunner.run(
+                List.of(
+                        "docker",
+                        "volume",
+                        "ls",
+                        "-q",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, composeProjectName + "_postgres_data\n", "", false));
+        when(commandRunner.run(
+                List.of(
+                        "docker",
+                        "network",
+                        "ls",
+                        "-q",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "network123\n", "", false));
+        when(commandRunner.run(
+                List.of("docker", "volume", "rm", composeProjectName + "_postgres_data"),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "volume removed\n", "", false));
+        when(commandRunner.run(
+                List.of("docker", "network", "rm", "network123"),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "network123\n", "", false));
+
+        dockerService.stopComposeProject(composeProjectName);
+
+        verify(commandRunner, never()).run(
+                List.of("docker", "stop"),
+                Duration.ofSeconds(30)
+        );
+        verify(commandRunner, never()).run(
+                List.of("docker", "rm", "-v"),
+                Duration.ofSeconds(30)
+        );
+        verify(commandRunner).run(
+                List.of("docker", "volume", "rm", composeProjectName + "_postgres_data"),
+                Duration.ofSeconds(30)
+        );
+        verify(commandRunner).run(
+                List.of("docker", "network", "rm", "network123"),
+                Duration.ofSeconds(30)
+        );
+    }
+
+    @Test
+    void stopContainer_stopsContainerAndRemovesItWithAnonymousVolumes() {
         DockerService dockerService = new DockerService(commandRunner);
 
         when(commandRunner.run(
                 List.of("docker", "stop", "abc123"),
+                Duration.ofSeconds(30)
+        )).thenReturn(new CommandResult(0, "abc123\n", "", false));
+        when(commandRunner.run(
+                List.of("docker", "rm", "-v", "abc123"),
                 Duration.ofSeconds(30)
         )).thenReturn(new CommandResult(0, "abc123\n", "", false));
 
@@ -342,6 +468,10 @@ class DockerServiceTest {
 
         verify(commandRunner).run(
                 List.of("docker", "stop", "abc123"),
+                Duration.ofSeconds(30)
+        );
+        verify(commandRunner).run(
+                List.of("docker", "rm", "-v", "abc123"),
                 Duration.ofSeconds(30)
         );
     }

@@ -52,8 +52,8 @@ import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckResult;
 import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckService;
 import com.alexeisoki.vibeboot.deployment.runtime.PortAllocator;
 import com.alexeisoki.vibeboot.deployment.runtime.WorkspaceService;
+import com.alexeisoki.vibeboot.deployment.strategy.DeploymentStrategyResolver;
 import com.alexeisoki.vibeboot.project.Project;
-import com.alexeisoki.vibeboot.project.ProjectEnvironmentVariableService;
 import com.alexeisoki.vibeboot.project.ProjectService;
 import com.alexeisoki.vibeboot.project.dto.AddProjectEnvironmentVariableRequest;
 import com.alexeisoki.vibeboot.project.dto.CreateProjectRequest;
@@ -347,22 +347,18 @@ class DeploymentWorkflowE2ETest {
                 DeploymentLogService deploymentLogService,
                 ProjectService projectService,
                 DockerService dockerService,
-                PortAllocator portAllocator,
                 HealthCheckService healthCheckService,
                 WorkspaceService workspaceService,
-                GitService gitService,
-                ProjectEnvironmentVariableService environmentVariableService
+                DeploymentStrategyResolver strategyResolver
         ) {
             return new DeploymentExecutor(
                     deploymentRepository,
                     deploymentLogService,
                     projectService,
                     dockerService,
-                    portAllocator,
                     healthCheckService,
                     workspaceService,
-                    gitService,
-                    environmentVariableService
+                    strategyResolver
             );
         }
 

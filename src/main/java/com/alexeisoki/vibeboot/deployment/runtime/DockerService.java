@@ -192,33 +192,55 @@ public class DockerService {
     public void stopContainer(String containerId) {
         validateText(containerId, "containerId");
 
-        CommandResult result = commandRunner.run(
+        CommandResult stopResult = commandRunner.run(
                 List.of("docker", "stop", containerId),
                 STOP_TIMEOUT
         );
+        requireSuccess(stopResult, "Docker container stop failed");
 
-        requireSuccess(result, "Docker container stop failed");
+        CommandResult removeResult = commandRunner.run(
+                List.of("docker", "rm", "-v", containerId),
+                STOP_TIMEOUT
+        );
+        requireSuccess(removeResult, "Docker container remove failed");
     }
 
     public void stopComposeProject(String composeProjectName) {
         validateText(composeProjectName, "composeProjectName");
 
         List<String> containerIds = composeContainerIds(composeProjectName);
-        if (containerIds.isEmpty()) {
-            throw new DockerServiceException("Docker Compose stop failed: no containers found for project " + composeProjectName);
+        List<String> volumeNames = composeVolumeNames(composeProjectName);
+        List<String> networkIds = composeNetworkIds(composeProjectName);
+        if (containerIds.isEmpty() && volumeNames.isEmpty() && networkIds.isEmpty()) {
+            throw new DockerServiceException(
+                    "Docker Compose stop failed: no resources found for project " + composeProjectName
+            );
         }
 
-        CommandResult stopResult = commandRunner.run(
-                commandWithContainerIds(List.of("docker", "stop"), containerIds),
-                STOP_TIMEOUT
-        );
-        requireSuccess(stopResult, "Docker Compose container stop failed");
+        if (!containerIds.isEmpty()) {
+            CommandResult stopResult = commandRunner.run(
+                    commandWithArguments(List.of("docker", "stop"), containerIds),
+                    STOP_TIMEOUT
+            );
+            requireSuccess(stopResult, "Docker Compose container stop failed");
 
-        CommandResult removeResult = commandRunner.run(
-                commandWithContainerIds(List.of("docker", "rm"), containerIds),
-                STOP_TIMEOUT
+            CommandResult removeResult = commandRunner.run(
+                    commandWithArguments(List.of("docker", "rm", "-v"), containerIds),
+                    STOP_TIMEOUT
+            );
+            requireSuccess(removeResult, "Docker Compose container remove failed");
+        }
+
+        removeResources(
+                List.of("docker", "volume", "rm"),
+                volumeNames,
+                "Docker Compose volume remove failed"
         );
-        requireSuccess(removeResult, "Docker Compose container remove failed");
+        removeResources(
+                List.of("docker", "network", "rm"),
+                networkIds,
+                "Docker Compose network remove failed"
+        );
     }
 
     public String getContainerLogs(String containerId) {
@@ -281,6 +303,56 @@ public class DockerService {
 
         requireSuccess(result, "Docker Compose container lookup failed");
 
+        return nonBlankOutputLines(result);
+    }
+
+    private List<String> composeVolumeNames(String composeProjectName) {
+        CommandResult result = commandRunner.run(
+                List.of(
+                        "docker",
+                        "volume",
+                        "ls",
+                        "-q",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                STOP_TIMEOUT
+        );
+
+        requireSuccess(result, "Docker Compose volume lookup failed");
+        return nonBlankOutputLines(result);
+    }
+
+    private List<String> composeNetworkIds(String composeProjectName) {
+        CommandResult result = commandRunner.run(
+                List.of(
+                        "docker",
+                        "network",
+                        "ls",
+                        "-q",
+                        "--filter",
+                        "label=com.docker.compose.project=" + composeProjectName
+                ),
+                STOP_TIMEOUT
+        );
+
+        requireSuccess(result, "Docker Compose network lookup failed");
+        return nonBlankOutputLines(result);
+    }
+
+    private void removeResources(List<String> commandPrefix, List<String> resourceNames, String failureMessage) {
+        if (resourceNames.isEmpty()) {
+            return;
+        }
+
+        CommandResult result = commandRunner.run(
+                commandWithArguments(commandPrefix, resourceNames),
+                STOP_TIMEOUT
+        );
+        requireSuccess(result, failureMessage);
+    }
+
+    private List<String> nonBlankOutputLines(CommandResult result) {
         return result.stdout()
                 .lines()
                 .map(String::trim)
@@ -288,9 +360,9 @@ public class DockerService {
                 .toList();
     }
 
-    private List<String> commandWithContainerIds(List<String> prefix, List<String> containerIds) {
+    private List<String> commandWithArguments(List<String> prefix, List<String> arguments) {
         List<String> command = new ArrayList<>(prefix);
-        command.addAll(containerIds);
+        command.addAll(arguments);
         return command;
     }
 

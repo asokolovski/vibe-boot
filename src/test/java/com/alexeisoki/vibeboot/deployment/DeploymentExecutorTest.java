@@ -7,7 +7,9 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,6 +18,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +44,12 @@ import com.alexeisoki.vibeboot.deployment.runtime.HealthCheckService;
 import com.alexeisoki.vibeboot.deployment.runtime.PortAllocator;
 import com.alexeisoki.vibeboot.deployment.runtime.WorkspaceService;
 import com.alexeisoki.vibeboot.deployment.runtime.WorkspaceServiceException;
+import com.alexeisoki.vibeboot.deployment.strategy.ContainerImageDeploymentStrategy;
+import com.alexeisoki.vibeboot.deployment.strategy.DeploymentExecutionContext;
+import com.alexeisoki.vibeboot.deployment.strategy.DeploymentStrategy;
+import com.alexeisoki.vibeboot.deployment.strategy.DeploymentStrategyResolver;
+import com.alexeisoki.vibeboot.deployment.strategy.DockerComposeDeploymentStrategy;
+import com.alexeisoki.vibeboot.deployment.strategy.GitHubRepositoryDeploymentStrategy;
 import com.alexeisoki.vibeboot.project.Project;
 import com.alexeisoki.vibeboot.project.ProjectEnvironmentVariableService;
 import com.alexeisoki.vibeboot.project.ProjectService;
@@ -401,6 +410,59 @@ class DeploymentExecutorTest {
     }
 
     @Test
+    void execute_cleansWorkspaceRegisteredBeforeStrategyFailure() {
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = new Deployment(UUID.randomUUID());
+        Project project = project();
+        DeploymentStrategyResolver strategyResolver = mock(DeploymentStrategyResolver.class);
+        DeploymentStrategy strategy = mock(DeploymentStrategy.class);
+        DeploymentExecutor deploymentExecutor = deploymentExecutor(strategyResolver);
+
+        stubRunningDeployment(deploymentId, deployment, project);
+        when(strategyResolver.resolve(project.getSourceType())).thenReturn(strategy);
+        doAnswer(invocation -> {
+            DeploymentExecutionContext context = invocation.getArgument(0);
+            context.registerWorkspace(WORKSPACE);
+            throw new GitServiceException(
+                    "Git repository clone failed: repository unavailable",
+                    "fatal: repository unavailable"
+            );
+        }).when(strategy).deploy(any(DeploymentExecutionContext.class));
+
+        deploymentExecutor.execute(deploymentId);
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.FAILED);
+        verify(workspaceService).cleanupWorkspace(WORKSPACE);
+        verify(deploymentLogService).appendLog(deploymentId, "fatal: repository unavailable");
+        verify(healthCheckService, never()).waitUntilHealthy(anyString(), anyString());
+    }
+
+    @Test
+    void execute_marksFailedWhenProjectLookupFailsWithoutAttemptingWorkspaceCleanup() {
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = new Deployment(UUID.randomUUID());
+        DeploymentStrategyResolver strategyResolver = mock(DeploymentStrategyResolver.class);
+        DeploymentExecutor deploymentExecutor = deploymentExecutor(strategyResolver);
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
+        when(deploymentRepository.markRunningIfQueued(
+                eq(deploymentId),
+                any(Instant.class),
+                eq(DeploymentStatus.QUEUED),
+                eq(DeploymentStatus.RUNNING)
+        )).thenReturn(1);
+        when(projectService.getProjectOrThrow(deployment.getProjectId()))
+                .thenThrow(new ResourceNotFoundException("Project not found"));
+
+        deploymentExecutor.execute(deploymentId);
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.FAILED);
+        verify(strategyResolver, never()).resolve(any(ProjectSourceType.class));
+        verify(workspaceService, never()).cleanupWorkspace(any(Path.class));
+        verify(deploymentLogService).appendLog(deploymentId, "Project not found");
+    }
+
+    @Test
     void execute_skipsDeploymentThatIsAlreadyRunning() {
         UUID deploymentId = UUID.randomUUID();
         Deployment deployment = new Deployment(UUID.randomUUID());
@@ -450,17 +512,49 @@ class DeploymentExecutorTest {
     }
 
     private DeploymentExecutor deploymentExecutor() {
+        DeploymentStrategyResolver strategyResolver = new DeploymentStrategyResolver(
+                List.of(
+                        new ContainerImageDeploymentStrategy(
+                                deploymentRepository,
+                                dockerService,
+                                deploymentLogService,
+                                portAllocator,
+                                environmentVariableService
+                        ),
+                        new GitHubRepositoryDeploymentStrategy(
+                                deploymentRepository,
+                                deploymentLogService,
+                                dockerService,
+                                portAllocator,
+                                workspaceService,
+                                gitService,
+                                environmentVariableService
+                        ),
+                        new DockerComposeDeploymentStrategy(
+                                deploymentRepository,
+                                deploymentLogService,
+                                dockerService,
+                                portAllocator,
+                                workspaceService,
+                                gitService,
+                                environmentVariableService,
+                                composeFileService
+                        )
+                )
+        );
+
+        return deploymentExecutor(strategyResolver);
+    }
+
+    private DeploymentExecutor deploymentExecutor(DeploymentStrategyResolver strategyResolver) {
         return new DeploymentExecutor(
                 deploymentRepository,
                 deploymentLogService,
                 projectService,
                 dockerService,
-                portAllocator,
                 healthCheckService,
                 workspaceService,
-                gitService,
-                environmentVariableService,
-                composeFileService
+                strategyResolver
         );
     }
 
