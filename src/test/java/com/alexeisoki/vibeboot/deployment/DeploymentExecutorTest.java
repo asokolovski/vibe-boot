@@ -480,6 +480,123 @@ class DeploymentExecutorTest {
     }
 
     @Test
+    void execute_recoversRedeliveredRunningDeploymentAndRetriesIt() {
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = new Deployment(UUID.randomUUID());
+        deployment.markRunning();
+        deployment.recordDockerRuntime(
+                "old-image",
+                "old-container",
+                49152,
+                8080,
+                "http://localhost:49152"
+        );
+        Project project = project();
+        DeploymentStrategyResolver strategyResolver = mock(DeploymentStrategyResolver.class);
+        DeploymentStrategy strategy = mock(DeploymentStrategy.class);
+        DeploymentExecutor deploymentExecutor = deploymentExecutor(strategyResolver);
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
+        when(deploymentRepository.save(any(Deployment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(deploymentRepository.markRunningIfQueued(
+                eq(deploymentId),
+                any(Instant.class),
+                eq(DeploymentStatus.QUEUED),
+                eq(DeploymentStatus.RUNNING)
+        )).thenReturn(1);
+        when(projectService.getProjectOrThrow(deployment.getProjectId())).thenReturn(project);
+        when(strategyResolver.resolve(project.getSourceType())).thenReturn(strategy);
+        doAnswer(invocation -> {
+            deployment.recordDockerRuntime(
+                    "new-image",
+                    "new-container",
+                    49153,
+                    8080,
+                    "http://localhost:49153"
+            );
+            return null;
+        }).when(strategy).deploy(any(DeploymentExecutionContext.class));
+        when(healthCheckService.waitUntilHealthy("http://localhost:49153", "/health"))
+                .thenReturn(new HealthCheckResult(
+                        true,
+                        URI.create("http://localhost:49153/health"),
+                        1,
+                        "Health check succeeded"
+                ));
+
+        deploymentExecutor.execute(deploymentId, true);
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.SUCCESS);
+        assertThat(deployment.getAttemptCount()).isEqualTo(2);
+        assertThat(deployment.getContainerId()).isEqualTo("new-container");
+        verify(dockerService).getContainerLogs("old-container");
+        verify(dockerService).stopContainer("old-container");
+        verify(deploymentLogService).appendLog(
+                deploymentId,
+                "Previous deployment attempt was interrupted; retrying"
+        );
+        verify(strategy).deploy(any(DeploymentExecutionContext.class));
+    }
+
+    @Test
+    void execute_marksRedeliveredRunningDeploymentFailedAfterMaximumAttempts() {
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = new Deployment(UUID.randomUUID());
+        deployment.markRunning();
+        deployment.markRunning();
+        deployment.markRunning();
+        deployment.recordDockerRuntime(
+                "old-image",
+                "old-container",
+                49152,
+                8080,
+                "http://localhost:49152"
+        );
+        DeploymentExecutor deploymentExecutor = deploymentExecutor();
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
+
+        deploymentExecutor.execute(deploymentId, true);
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.FAILED);
+        assertThat(deployment.getAttemptCount()).isEqualTo(3);
+        verify(dockerService).stopContainer("old-container");
+        verify(deploymentRepository, never()).markRunningIfQueued(
+                any(UUID.class),
+                any(Instant.class),
+                any(DeploymentStatus.class),
+                any(DeploymentStatus.class)
+        );
+        verify(projectService, never()).getProjectOrThrow(any(UUID.class));
+        verify(deploymentLogService).appendLog(
+                deploymentId,
+                "Deployment worker was interrupted too many times"
+        );
+    }
+
+    @Test
+    void execute_skipsRedeliveredTerminalDeployment() {
+        UUID deploymentId = UUID.randomUUID();
+        Deployment deployment = new Deployment(UUID.randomUUID());
+        deployment.markFinished(DeploymentStatus.SUCCESS);
+        DeploymentExecutor deploymentExecutor = deploymentExecutor();
+
+        when(deploymentRepository.findById(deploymentId)).thenReturn(Optional.of(deployment));
+
+        deploymentExecutor.execute(deploymentId, true);
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.SUCCESS);
+        verify(dockerService, never()).stopContainer(anyString());
+        verify(deploymentRepository, never()).markRunningIfQueued(
+                any(UUID.class),
+                any(Instant.class),
+                any(DeploymentStatus.class),
+                any(DeploymentStatus.class)
+        );
+        verify(deploymentRepository, never()).save(any(Deployment.class));
+    }
+
+    @Test
     void execute_throwsWhenDeploymentIsMissing() {
         UUID deploymentId = UUID.randomUUID();
         DeploymentExecutor deploymentExecutor = deploymentExecutor();

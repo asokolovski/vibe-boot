@@ -24,6 +24,7 @@ import com.alexeisoki.vibeboot.shared.ResourceNotFoundException;
 @Component
 public class DeploymentExecutor {
     private static final int MAX_LOG_MESSAGE_LENGTH = 4000;
+    private static final int MAX_ATTEMPTS = 3;
 
     private final DeploymentRepository deploymentRepository;
     private final DeploymentLogService deploymentLogService;
@@ -54,8 +55,33 @@ public class DeploymentExecutor {
     }
 
     public void execute(UUID deploymentId) {
+        execute(deploymentId, false);
+    }
+
+    public void execute(UUID deploymentId, boolean redelivered) {
         Deployment deployment = deploymentRepository.findById(deploymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Deployment not found"));
+
+        if (isTerminal(deployment.getStatus())) {
+            return;
+        }
+
+        if (deployment.getStatus() == DeploymentStatus.RUNNING) {
+            if (!redelivered) {
+                return;
+            }
+
+            if (deployment.getAttemptCount() >= MAX_ATTEMPTS) {
+                failDeployment(
+                        deploymentId,
+                        deployment,
+                        new IllegalStateException("Deployment worker was interrupted too many times")
+                );
+                return;
+            }
+
+            recoverInterruptedDeployment(deploymentId, deployment);
+        }
 
         if (deployment.getStatus() != DeploymentStatus.QUEUED) {
             return;
@@ -97,7 +123,22 @@ public class DeploymentExecutor {
             cleanupWorkspace(deploymentId, workspace);
         }
     }
-    
+
+    private boolean isTerminal(DeploymentStatus status) {
+        return status == DeploymentStatus.SUCCESS
+                || status == DeploymentStatus.FAILED
+                || status == DeploymentStatus.STOPPED;
+    }
+
+    private void recoverInterruptedDeployment(UUID deploymentId, Deployment deployment) {
+        deploymentLogService.appendLog(
+                deploymentId,
+                "Previous deployment attempt was interrupted; retrying"
+        );
+        cleanupUnhealthyRuntime(deploymentId, deployment);
+        deployment.prepareForRetry();
+        deploymentRepository.save(deployment);
+    }
 
     private void finishAfterHealthCheck(UUID deploymentId, Deployment deployment, Project project) {
         deploymentLogService.appendLog(

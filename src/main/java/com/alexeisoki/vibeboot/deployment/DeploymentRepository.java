@@ -17,7 +17,9 @@ public interface DeploymentRepository extends JpaRepository<Deployment, UUID> {
     @Query("""
             update Deployment deployment
             set deployment.status = :runningStatus,
-                deployment.startedAt = :startedAt
+                deployment.startedAt = :startedAt,
+                deployment.finishedAt = null,
+                deployment.attemptCount = coalesce(deployment.attemptCount, 0) + 1
             where deployment.id = :deploymentId
               and deployment.status = :queuedStatus
             """)

@@ -10,6 +10,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.support.AmqpHeaders;
+import org.springframework.messaging.handler.annotation.Header;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -27,20 +29,28 @@ class DeploymentQueueConsumerTest {
         DeploymentQueueConsumer deploymentQueueConsumer = new DeploymentQueueConsumer(deploymentExecutor);
         UUID deploymentId = UUID.randomUUID();
 
-        deploymentQueueConsumer.consumeDeploymentRequested(deploymentId.toString());
+        deploymentQueueConsumer.consumeDeploymentRequested(deploymentId.toString(), true);
 
-        verify(deploymentExecutor).execute(deploymentId);
+        verify(deploymentExecutor).execute(deploymentId, true);
     }
 
     @Test
     @DisplayName("consumeDeploymentRequested listens to the deployment queue with listener concurrency")
     void consumeDeploymentRequested_hasRabbitListenerConfiguration() throws NoSuchMethodException {
-        Method method = DeploymentQueueConsumer.class.getMethod("consumeDeploymentRequested", String.class);
+        Method method = DeploymentQueueConsumer.class.getMethod(
+                "consumeDeploymentRequested",
+                String.class,
+                boolean.class
+        );
 
         RabbitListener rabbitListener = method.getAnnotation(RabbitListener.class);
+        Header redeliveredHeader = method.getParameters()[1].getAnnotation(Header.class);
 
         assertThat(rabbitListener).isNotNull();
         assertThat(rabbitListener.queues()).containsExactly(RabbitMqConfig.DEPLOYMENT_REQUESTED_QUEUE);
         assertThat(rabbitListener.concurrency()).isEqualTo("2-4");
+        assertThat(redeliveredHeader).isNotNull();
+        assertThat(redeliveredHeader.name()).isEqualTo(AmqpHeaders.REDELIVERED);
+        assertThat(redeliveredHeader.defaultValue()).isEqualTo("false");
     }
 }

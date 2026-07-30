@@ -12,11 +12,54 @@ class DeploymentTest {
     void newDeployment_hasNoDockerRuntimeMetadata() {
         Deployment deployment = new Deployment(UUID.randomUUID());
 
+        assertThat(deployment.getAttemptCount()).isZero();
         assertThat(deployment.getImageName()).isNull();
         assertThat(deployment.getContainerId()).isNull();
         assertThat(deployment.getHostPort()).isNull();
         assertThat(deployment.getContainerPort()).isNull();
         assertThat(deployment.getDeploymentUrl()).isNull();
+    }
+
+    @Test
+    void markRunning_incrementsAttemptCountAndClearsFinishedAt() {
+        Deployment deployment = new Deployment(UUID.randomUUID());
+        deployment.markFinished(DeploymentStatus.FAILED);
+
+        deployment.markRunning();
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.RUNNING);
+        assertThat(deployment.getAttemptCount()).isEqualTo(1);
+        assertThat(deployment.getStartedAt()).isNotNull();
+        assertThat(deployment.getFinishedAt()).isNull();
+    }
+
+    @Test
+    void prepareForRetry_resetsStatusAndRuntimeMetadataButKeepsAttemptCountAndImageTag() {
+        Deployment deployment = new Deployment(UUID.randomUUID(), "sha-123");
+        deployment.markRunning();
+        deployment.recordComposeRuntime(
+                "vibeboot-123",
+                "frontend",
+                49152,
+                80,
+                "http://localhost:49152"
+        );
+
+        deployment.prepareForRetry();
+
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.QUEUED);
+        assertThat(deployment.getStartedAt()).isNull();
+        assertThat(deployment.getFinishedAt()).isNull();
+        assertThat(deployment.getAttemptCount()).isEqualTo(1);
+        assertThat(deployment.getImageTag()).isEqualTo("sha-123");
+        assertThat(deployment.getImageName()).isNull();
+        assertThat(deployment.getContainerId()).isNull();
+        assertThat(deployment.getHostPort()).isNull();
+        assertThat(deployment.getContainerPort()).isNull();
+        assertThat(deployment.getDeploymentUrl()).isNull();
+        assertThat(deployment.getRuntimeType()).isEqualTo(DeploymentRuntimeType.SINGLE_CONTAINER);
+        assertThat(deployment.getComposeProjectName()).isNull();
+        assertThat(deployment.getPrimaryServiceName()).isNull();
     }
 
     @Test

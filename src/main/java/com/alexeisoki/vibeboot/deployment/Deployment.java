@@ -72,6 +72,9 @@ public class Deployment {
     @Column(nullable = true)
     private String primaryServiceName;
 
+    @Column(nullable = true)
+    private Integer attemptCount = 0;
+
     protected Deployment() {
     }
 
@@ -92,6 +95,8 @@ public class Deployment {
     public void markRunning(Instant startedAt) {
         status = DeploymentStatus.RUNNING;
         this.startedAt = startedAt;
+        this.finishedAt = null;
+        this.attemptCount = getAttemptCount() + 1;
     }
 
     public void markFinished(DeploymentStatus finishedStatus) {
@@ -105,6 +110,20 @@ public class Deployment {
 
     public void markStopped() {
         status = DeploymentStatus.STOPPED;
+    }
+
+    public void prepareForRetry() {
+        status = DeploymentStatus.QUEUED;
+        startedAt = null;
+        finishedAt = null;
+        imageName = null;
+        containerId = null;
+        hostPort = null;
+        containerPort = null;
+        deploymentUrl = null;
+        runtimeType = null;
+        composeProjectName = null;
+        primaryServiceName = null;
     }
 
     public void recordDockerRuntime(
@@ -207,6 +226,10 @@ public class Deployment {
 
     public String getPrimaryServiceName() {
         return primaryServiceName;
+    }
+
+    public int getAttemptCount() {
+        return attemptCount == null ? 0 : attemptCount;
     }
 
     private String blankToNull(String value) {
